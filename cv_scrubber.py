@@ -1,5 +1,6 @@
 import streamlit as st
 import fitz  # PyMuPDF
+import re
 import io
 
 st.set_page_config(page_title="PDF CV Scrubber", page_icon="doc")
@@ -23,25 +24,70 @@ def redact_pdf(file_bytes, layout_profile):
     redactions_applied = 0
     
     for page in doc:
-        page_width = page.rect.width
+        page_text = page.get_text()
+        page_dict = page.get_text("dict")
         
-        # --- FIXED, SAFELY ISOLATED COORDINATE MASKS ---
         if "Standard Layout" in layout_profile:
-            # Drop a precise mask over the upper right quadrant contact lines
-            # Starts at x=320 (safely to the right of your name), y=48 (safely BELOW your name line), 
-            # extending to the edge of the page. This guarantees numbers, emails, and labels disappear while your name stays 100% safe.
-            right_mask = fitz.Rect(320, 48, page_width - 15, 110)
-            page.add_redact_annot(right_mask, fill=(1, 1, 1))
-            redactions_applied += 1
-                
+            # --- STRATEGY 1: LASER SUBSTRING SEARCH (Protects Right-Aligned Names) ---
+            targets = set()
+            
+            # Find structural emails
+            emails = re.findall(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', page_text)
+            for e in emails: targets.add(e.strip())
+            
+            # Find structural phone numbers
+            phones = re.findall(r'\+?\d{1,4}[-.\s]?\(?\d{1,3}?\)?[-.\s]?\d{3,4}[-.\s]?\d{3,4}', page_text)
+            for p in phones: 
+                if len(p.strip()) > 6:
+                    targets.add(p.strip())
+            
+            # Target structural labels
+            labels = ["Mobile:", "Email:", "Phone:", "Web:", "Website:", "Contact:"]
+            for label in labels:
+                if label in page_text:
+                    targets.add(label)
+            
+            # White out ONLY the precise character coordinates of identified targets
+            for target in targets:
+                rect_list = page.search_for(target)
+                for rect in rect_list:
+                    tight_rect = fitz.Rect(rect.x0 - 2, rect.y0 - 1, rect.x1 + 2, rect.y1 + 1)
+                    page.add_redact_annot(tight_rect, fill=(1, 1, 1))
+                    redactions_applied += 1
+            
+            # Isolate and remove the standalone formatting slash separator in the header zone
+            slashes = page.search_for("/")
+            for s_rect in slashes:
+                if s_rect.y0 < 120 and s_rect.x0 > 250:
+                    page.add_redact_annot(s_rect, fill=(1, 1, 1))
+                    redactions_applied += 1
+                    
         else:
-            # Two-Column Sidebar Layout Profile
-            # Drops a fixed vertical block covering the left column space completely.
-            # Set to x=215 to cleanly swallow the entire word 'CONTACT' and links, while leaving 'PROFILE' and body columns perfectly intact.
-            left_sidebar_mask = fitz.Rect(10, 85, 215, 250)
-            page.add_redact_annot(left_sidebar_mask, fill=(1, 1, 1))
-            redactions_applied += 1
-
+            # --- STRATEGY 2: DYNAMIC SIDEBAR BOUNDARY WALL (Protects Column Text) ---
+            # Automatically find the exact coordinate where the main column starts
+            main_column_left = 220  # Safe default fallback
+            
+            for block in page_dict.get("blocks", []):
+                if "lines" in block:
+                    for line in block["lines"]:
+                        if "spans" in line:
+                            for span in line["spans"]:
+                                txt = span["text"].upper().strip()
+                                if txt in ["PROFILE", "PROFESSIONAL EXPERIENCE", "EXPERIENCE"]:
+                                    main_column_left = span["bbox"][0]
+                                    break
+            
+            # White out all content containers on the left side of the calculated wall boundary
+            for block in page_dict.get("blocks", []):
+                bx0, by0, bx1, by1 = block["bbox"]
+                
+                # If the block belongs to the sidebar zone below the top header title area
+                if bx1 < main_column_left and by0 > 70:
+                    # Extend mask to the far left edge to swallow icons, but lock it before the text wall
+                    sidebar_mask = fitz.Rect(0, by0 - 4, main_column_left - 10, by1 + 4)
+                    page.add_redact_annot(sidebar_mask, fill=(1, 1, 1))
+                    redactions_applied += 1
+                    
         # Commit redactions permanently onto the current page layout
         page.apply_redactions()
         
@@ -64,7 +110,7 @@ if uploaded_file is not None:
                 if count == 0:
                     st.warning("No target details matched your active layout profile.")
                 else:
-                    st.success("Document scrubbed cleanly! Layout and name preserved perfectly.")
+                    st.success("Document scrubbed cleanly! Layout integrity preserved.")
                 
                 st.download_button(
                     label="Download Redacted PDF",
