@@ -17,7 +17,7 @@ layout_style = st.sidebar.selectbox("Select layout style:", options=["Standard L
 if layout_style != st.session_state.active_layout:
     st.session_state.active_layout = layout_style
     if "Two-Column" in layout_style: st.session_state.top_boundary_val, st.session_state.h_limit_val, st.session_state.v_limit_val = 88, 220, 260
-    else: st.session_state.top_boundary_val, st.session_state.h_limit_val, st.session_state.v_limit_val = 0, 140, 115
+    else: st.session_state.top_boundary_val, st.session_state.h_limit_val, st.session_state.v_limit_val = 0, 56, 5
 
 uploaded_file = st.file_uploader("Upload the PDF Resume", type=["pdf", "docx", "doc"])
 
@@ -28,7 +28,11 @@ if uploaded_file is not None and uploaded_file.name.lower().endswith((".docx", "
 
 def core_contact_check(text):
     text_lower = text.lower().strip()
-    return bool(re.search(r'[\w\.-]+@[\w\.-]+\.\w+', text)) or bool(re.search(r'\+?\d{1,4}[-.\s]?\(?\d{1,3}?\)?[-.\s]?\d{3,4}', text)) or "linkedin.com" in text_lower or "/in/" in text_lower or "www." in text_lower or "hotmail" in text_lower
+    return (bool(re.search(r'[\w\.-]+@[\w\.-]+\.\w+', text)) or 
+            bool(re.search(r'\+?\d{1,4}[-.\s]?\(?\d{1,3}?\)?[-.\s]?\d{3,4}', text)) or 
+            "linkedin.com" in text_lower or "/in/" in text_lower or "www." in text_lower or 
+            "http" in text_lower or "@hotmail" in text_lower or "@yahoo" in text_lower or 
+            "@outlook" in text_lower)
 
 if uploaded_file is not None and uploaded_file.name.lower().endswith(".pdf"):
     file_bytes = uploaded_file.read()
@@ -46,12 +50,12 @@ if uploaded_file is not None and uploaded_file.name.lower().endswith(".pdf"):
                         if txt in ["PROFILE", "EXPERIENCE"]: profile_x0 = span["bbox"]
             if "Two-Column" in layout_style:
                 st.session_state.top_boundary_val = 85
-                st.session_state.h_limit_val = int(profile_x0) if profile_x0 else 220
+                st.session_state.h_limit_val = int(profile_x0[0]) if profile_x0 else 220
                 st.session_state.v_limit_val = int(max([r.y1 for r in contact_boxes])) + 15 if contact_boxes else 260
             else:
                 st.session_state.top_boundary_val = 0
-                st.session_state.h_limit_val = int(min([r.x0 for r in contact_boxes])) - 40 if contact_boxes else 140
-                st.session_state.v_limit_val = int(max([r.y1 for r in contact_boxes])) + 10 if contact_boxes else 115
+                st.session_state.h_limit_val = 56
+                st.session_state.v_limit_val = 5
             doc.close()
             st.sidebar.success("Auto-tuned successfully!")
         except Exception as e: st.sidebar.error(f"Auto-tune failed: {e}")
@@ -65,9 +69,8 @@ if "Two-Column" in layout_style:
     h_limit = st.sidebar.slider("Mask Width Barrier", 100, 300, st.session_state.h_limit_val, 1, key="h_slider_two")
     v_limit = st.sidebar.slider("Mask Height Ceiling", 100, 500, st.session_state.v_limit_val, 1, key="v_slider_two")
 else:
-    # Retained as micro-precision tuners to manipulate icon offsets manually if required
-    h_limit = st.sidebar.slider("Icon Extension Offset Left", 10, 150, st.session_state.h_limit_val if st.session_state.h_limit_val < 150 else 60, 1, key="h_slider_std")
-    v_limit = st.sidebar.slider("Mask Extra Bottom Padding", 0, 50, 5, 1, key="v_slider_std")
+    h_limit = st.sidebar.slider("Icon Extension Offset Left", 10, 150, st.session_state.h_limit_val, 1, key="h_slider_std")
+    v_limit = st.sidebar.slider("Mask Extra Bottom Padding", 0, 50, st.session_state.v_limit_val, 1, key="v_slider_std")
 st.session_state.h_limit_val, st.session_state.v_limit_val = h_limit, v_limit
 
 st.sidebar.markdown("---")
@@ -79,21 +82,35 @@ def redact_pdf(file_bytes, layout_profile, w_barrier, h_ceiling, top_start):
         page_text, page_dict = page.get_text(), page.get_text("dict")
         
         if "Standard Layout" in layout_profile:
-            # --- FIXED STRATEGY 1: LASER TARGET SUBSTRINGS AND SWALLOW ICON LAYER ---
             targets = set()
+            # Extract standard patterns cleanly
             for e in re.findall(r'[\w\.-]+@[\w\.-]+\.\w+', page_text): targets.add(e.strip())
             for p in re.findall(r'\+?\d{1,4}[-.\s]?\(?\d{1,3}?\)?[-.\s]?\d{3,4}', page_text):
                 if len(p.strip()) > 6: targets.add(p.strip())
-            for word in ["mobile:", "email:", "phone:", "website:", "linkedin:", "hotmail"]:
-                if word in page_text.lower(): targets.add(word)
-                
+            
+            # CRITICAL LOOKAHEAD: Matches exact words ONLY, completely shielding partial matches like "Matchy"
+            for word in ["mobile:", "email:", "phone:", "website:", "linkedin:"]:
+                if re.search(r'\b' + re.escape(word) + r'\b', page_text.lower()):
+                    targets.add(word)
+            
+            # Explicit token targeting for custom layout channels
+            if "cna" in page_text.lower(): targets.add("cna")
+            if "today" in page_text.lower(): targets.add("today")
+
+            # Redact active hyperlink layer blocks sitting in the top header section
+            for link in page.get_links():
+                l_rect = fitz.Rect(link["from"])
+                if l_rect.y0 < 150:
+                    page.add_redact_annot(fitz.Rect(l_rect.x0 - w_barrier, l_rect.y0 - 6, l_rect.x1 + 30, l_rect.y1 + h_ceiling), fill=(1, 1, 1))
+
             for target in targets:
                 for rect in page.search_for(target):
-                    # Dynamic Icon-Eating Shield: extends leftward using the slider value to swallow graphics completely
-                    icon_eating_rect = fitz.Rect(rect.x0 - w_barrier, rect.y0 - 6, rect.x1 + 4, rect.y1 + h_ceiling)
+                    # Guard Rail: Block drawing if the target coordinate matches your primary name column space
+                    if rect.x0 < 160 and rect.y0 < 60:
+                        continue
+                    icon_eating_rect = fitz.Rect(rect.x0 - w_barrier, rect.y0 - 6, rect.x1 + 30, rect.y1 + h_ceiling)
                     page.add_redact_annot(icon_eating_rect, fill=(1, 1, 1))
             
-            # Universal top quadrant cleaner loop for standalone paths like lone formatting slashes
             for s_rect in page.search_for("/"):
                 if s_rect.y0 < 150 and s_rect.x0 > 150:
                     page.add_redact_annot(fitz.Rect(s_rect.x0 - 4, s_rect.y0 - 4, s_rect.x1 + 4, s_rect.y1 + 4), fill=(1, 1, 1))
@@ -102,7 +119,9 @@ def redact_pdf(file_bytes, layout_profile, w_barrier, h_ceiling, top_start):
             for block in page_dict.get("blocks", []):
                 for line in block.get("lines", []):
                     for span in line.get("spans", []):
-                        if span["text"].upper().strip() in ["PROFILE", "EXPERIENCE"] and w_barrier == 220: main_column_left = float(span["bbox"])
+                        if span["text"].upper().strip() in ["PROFILE", "EXPERIENCE"] and w_barrier == 220: 
+                            main_column_left = float(span["bbox"][0])
+                            break
             for block in page_dict.get("blocks", []):
                 bx0, by0, bx1, by1 = block["bbox"]
                 if bx1 < main_column_left and top_start < by0 < h_ceiling: page.add_redact_annot(fitz.Rect(0, max(by0 - 4, top_start), main_column_left - 10, min(by1 + 4, h_ceiling)), fill=(1, 1, 1))
