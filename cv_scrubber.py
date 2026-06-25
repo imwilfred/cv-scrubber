@@ -6,15 +6,6 @@ st.set_page_config(page_title="PDF CV Scrubber", layout="wide")
 st.title("Interactive PDF CV Contact Scrubber")
 st.write("Upload your resume and use Auto-Tune or manual sliders.")
 
-# --- THE ABSOLUTE CSS FIX: Hard-locks the internal text block to vanish completely ---
-st.markdown("""
-<style>
-div[data-testid="stFileUploaderSubcaption"] { display: none !important; height: 0 !important; visibility: hidden !important; }
-div[data-testid="stFileUploaderSubcaption"] * { display: none !important; visibility: hidden !important; }
-div[data-testid="stFileUploader"] button span { font-size: 14px !important; visibility: visible !important; }
-</style>
-""", unsafe_allow_html=True)
-
 if "top_boundary_val" not in st.session_state: st.session_state.top_boundary_val = 88
 if "h_limit_val" not in st.session_state: st.session_state.h_limit_val = 220
 if "v_limit_val" not in st.session_state: st.session_state.v_limit_val = 260
@@ -28,10 +19,13 @@ if layout_style != st.session_state.active_layout:
     if "Two-Column" in layout_style: st.session_state.top_boundary_val, st.session_state.h_limit_val, st.session_state.v_limit_val = 88, 220, 260
     else: st.session_state.top_boundary_val, st.session_state.h_limit_val, st.session_state.v_limit_val = 32, 310, 115
 
+# --- CLEAN PYTHON LAYOUT BLOCK ---
 st.markdown("Upload the PDF Resume")
-with st.container():
-    uploaded_file = st.file_uploader("Upload", type=["pdf", "docx", "doc"], label_visibility="collapsed")
-    st.caption("200MB per file")
+
+# label_visibility="hidden" completely deletes the automatic header and the extra text from your page layout
+uploaded_file = st.file_uploader("Upload", type=["pdf", "docx", "doc"], label_visibility="hidden")
+
+st.caption("200MB per file")
 
 if uploaded_file is not None and uploaded_file.name.lower().endswith((".docx", ".doc")):
     st.error("⚠️ Invalid File Type Detected!")
