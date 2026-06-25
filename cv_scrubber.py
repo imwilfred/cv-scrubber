@@ -6,12 +6,12 @@ import io
 st.set_page_config(page_title="PDF CV Scrubber", page_icon="doc")
 
 st.title("PDF CV Contact Information Scrubber")
-st.write("Upload a PDF resume to cleanly wipe contact layout data while locking your text boundaries.")
+st.write("Upload a PDF resume to cleanly erase contact layers using context-aware multi-column layout protections.")
 
 # --- UI Sidebar Controls ---
 st.sidebar.header("Adaptive Controls")
-icon_clearance = st.sidebar.slider("Icon Strip Clearance Width", min_value=10, max_value=150, value=75, step=5,
-                                  help="Increase this ONLY if sidebar icons are still partially showing.")
+icon_clearance = st.sidebar.slider("Icon Strip Clearance Width", min_value=10, max_value=150, value=60, step=5,
+                                  help="Increase this ONLY if contact icons are still partially showing.")
 
 uploaded_file = st.file_uploader("Choose a PDF resume", type="pdf")
 
@@ -36,16 +36,23 @@ def should_scrub_text(text):
         
     return False
 
+def check_left_neighbor(page, target_rect):
+    """Scans a tiny horizontal zone to the left of the match to check for neighboring body text."""
+    # Look back 80 pixels to the left on the same vertical alignment
+    search_zone = fitz.Rect(target_rect.x0 - 80, target_rect.y0, target_rect.x0, target_rect.y1)
+    left_text = page.get_text("text", clip=search_zone).strip()
+    
+    # If there's non-contact body text right next to it, return True
+    if left_text and not should_scrub_text(left_text) and len(left_text) > 2:
+        return True
+    return False
+
 def redact_pdf(file_bytes, icon_pad):
     doc = fitz.open(stream=file_bytes, filetype="pdf")
     redactions_applied = 0
     
     for page in doc:
         page_dict = page.get_text("dict")
-        page_width = page.rect.width
-        
-        # Define a safe boundary: usually contact sidebars live in the first 40% of the page width
-        sidebar_threshold = page_width * 0.40 
         
         for block in page_dict.get("blocks", []):
             if "lines" in block:
@@ -57,23 +64,22 @@ def redact_pdf(file_bytes, icon_pad):
                             if should_scrub_text(span_text):
                                 rect = fitz.Rect(span["bbox"])
                                 
-                                # CRITICAL CHECK: Is this text actually inside the sidebar zone?
-                                if rect.x0 < sidebar_threshold:
-                                    # Safe to apply wide horizontal layout clearance to swallow icons
+                                # INTELLIGENT CONTEXT CHECK: Is there independent text directly to our left?
+                                if check_left_neighbor(page, rect):
+                                    # We are right next to body text! Use laser-tight crop to prevent cutting words.
+                                    safe_rect = fitz.Rect(
+                                        rect.x0 - 2, 
+                                        rect.y0 - 2, 
+                                        rect.x1 + 2, 
+                                        rect.y1 + 2
+                                    )
+                                else:
+                                    # It's an isolated block column entry, safe to expand and clear the icon graphic.
                                     safe_rect = fitz.Rect(
                                         rect.x0 - icon_pad, 
                                         rect.y0 - 8, 
                                         rect.x1 + 5, 
                                         rect.y1 + 8
-                                    )
-                                else:
-                                    # It's in the main body area (like work history)! 
-                                    # Use a microscopic laser-tight crop so it NEVER bleeds left into descriptions
-                                    safe_rect = fitz.Rect(
-                                        rect.x0 - 2, 
-                                        rect.y0 - 1, 
-                                        rect.x1 + 2, 
-                                        rect.y1 + 1
                                     )
                                 
                                 page.add_redact_annot(safe_rect, fill=(1, 1, 1))
@@ -85,15 +91,14 @@ def redact_pdf(file_bytes, icon_pad):
         for slug in custom_slugs:
             rect_list = page.search_for(slug)
             for rect in rect_list:
-                # Apply the same coordinate checks to vanity path loops
-                if rect.x0 < sidebar_threshold:
-                    safe_slug_rect = fitz.Rect(rect.x0 - icon_pad, rect.y0 - 8, rect.x1 + 5, rect.y1 + 8)
+                if check_left_neighbor(page, rect):
+                    safe_slug_rect = fitz.Rect(rect.x0 - 2, rect.y0 - 2, rect.x1 + 2, rect.y1 + 2)
                 else:
-                    safe_slug_rect = fitz.Rect(rect.x0 - 2, rect.y0 - 1, rect.x1 + 2, rect.y1 + 1)
+                    safe_slug_rect = fitz.Rect(rect.x0 - icon_pad, rect.y0 - 8, rect.x1 + 5, rect.y1 + 8)
                 page.add_redact_annot(safe_slug_rect, fill=(1, 1, 1))
                 redactions_applied += 1
                 
-        # Apply the visual masks and erase target fields
+        # Permanently apply the visual white mask
         page.apply_redactions()
         
     output_buffer = io.BytesIO()
@@ -106,14 +111,14 @@ if uploaded_file is not None:
     file_bytes = uploaded_file.read()
     
     if st.button("Clean PDF Document", type="primary"):
-        with st.spinner("Executing coordinate-isolated cleanup..."):
+        with st.spinner("Executing context-aware multi-column tracking..."):
             try:
                 scrubbed_pdf, count = redact_pdf(file_bytes, icon_clearance)
                 
                 if count == 0:
-                    st.warning("No target elements matched your layout configuration parameters.")
+                    st.warning("No target fields matched your layout constraints.")
                 else:
-                    st.success(f"Successfully cleaned layout fields without leaking into text columns!")
+                    st.success("Successfully cleared contact segments while fully protecting experiences text!")
                 
                 st.download_button(
                     label="Download Redacted PDF",
