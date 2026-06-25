@@ -6,90 +6,85 @@ import io
 st.set_page_config(page_title="PDF CV Scrubber", page_icon="doc")
 
 st.title("PDF CV Contact Information Scrubber")
-st.write("Upload a PDF resume to cleanly erase contact sections without damaging text or layout.")
+st.write("Upload a PDF resume to erase contact details and labels while completely preserving your name.")
 
 uploaded_file = st.file_uploader("Choose a PDF resume", type="pdf")
 
+def should_scrub_text(text):
+    """Returns True if the text segment contains contact data or specific labels."""
+    text_lower = text.lower().strip()
+    
+    # 1. Regex checks for direct contact data
+    has_email = bool(re.search(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', text))
+    has_phone = bool(re.search(r'\+?\d{1,4}[-.\s]?\(?\d{1,3}?\)?[-.\s]?\d{3,4}[-.\s]?\d{3,4}', text))
+    has_linkedin = "linkedin.com" in text_lower or "/in/" in text_lower
+    has_generic_url = "www." in text_lower or "http" in text_lower
+    
+    if has_email or has_phone or has_linkedin or has_generic_url:
+        return True
+        
+    # 2. Match exact contact label triggers (case-insensitive)
+    # Clean punctuation to catch "Mobile:", "Email:", "Phone -"
+    clean_word = re.sub(r'[^a-z]', '', text_lower).strip()
+    contact_labels = {"mobile", "phone", "email", "linkedin", "socials", "links", "website"}
+    
+    if clean_word in contact_labels:
+        return True
+        
+    return False
+
 def redact_pdf(file_bytes):
     doc = fitz.open(stream=file_bytes, filetype="pdf")
-    
-    # Strict contact data patterns (No loose words like 'Singapore' or 'Asia')
-    email_pattern = r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
-    phone_pattern = r'\+?\d{1,4}[-.\s]?\(?\d{1,3}?\)?[-.\s]?\d{3,4}[-.\s]?\d{3,4}'
-    linkedin_pattern = r'(https?://)?(www\.)?linkedin\.com/in/[a-zA-Z0-9_/\-]+'
-    linkedin_remnant_pattern = r'/in/[a-zA-Z0-9_\-]+/?'
-    general_url_pattern = r'(https?://\S+|www\.\S+)'
-    
-    master_regex = re.compile(f"({email_pattern})|({linkedin_pattern})|({linkedin_remnant_pattern})|({phone_pattern})|({general_url_pattern})")
-    
-    # Strict headers to erase only when standing completely alone
-    headers_to_erase = [
-        "contact", "contact details", "contact info", "contact information",
-        "socials", "links", "websites"
-    ]
-    
-    redactions_found = 0
+    redactions_applied = 0
     
     for page in doc:
-        page_text = page.get_text()
-        unique_matches = set()
+        # Extract deep layout structures down to the text span level
+        page_dict = page.get_text("dict")
         
-        # 1. Find direct contact info
-        for match in master_regex.finditer(page_text):
-            unique_matches.add(match.group(0).strip())
-            
-        # 2. Find explicit standalone contact headers
-        for header in headers_to_erase:
-            header_regex = re.compile(rf"^\s*{header}\s*$", re.IGNORECASE | re.MULTILINE)
-            for match in header_regex.finditer(page_text):
-                unique_matches.add(match.group(0).strip())
-                
-        # 3. Apply safe, tight white-out boxes
-        for text_to_hide in unique_matches:
-            if len(text_to_hide) >= 2:
-                rect_list = page.search_for(text_to_hide)
-                for rect in rect_list:
-                    # Tighter, safer horizontal and vertical padding
-                    # Prevents bleeding into university names or student names nearby
-                    safe_rect = fitz.Rect(
-                        rect.x0 - 18, 
-                        rect.y0 - 2, 
-                        rect.x1 + 2, 
-                        rect.y1 + 2
-                    )
-                    page.add_redact_annot(safe_rect, fill=(1, 1, 1))
-                    redactions_found += 1
-                    
-        # 4. Fallback pass for layout text remnants
-        custom_slugs = re.findall(r'/[a-zA-Z0-9_\-]{5,}/', page_text)
-        for slug in custom_slugs:
-            rect_list = page.search_for(slug)
-            for rect in rect_list:
-                safe_slug_rect = fitz.Rect(rect.x0 - 18, rect.y0 - 2, rect.x1 + 2, rect.y1 + 2)
-                page.add_redact_annot(safe_slug_rect, fill=(1, 1, 1))
-                redactions_found += 1
-                
-        # Permanently execute redactions
+        for block in page_dict.get("blocks", []):
+            if "lines" in block:
+                for line in block["lines"]:
+                    if "spans" in line:
+                        for span in line["spans"]:
+                            span_text = span["text"]
+                            
+                            # Check each specific text slice instead of the entire line
+                            if should_scrub_text(span_text):
+                                rect = fitz.Rect(span["bbox"])
+                                
+                                # Use minimal, tight padding so it never touches neighboring text/names
+                                safe_rect = fitz.Rect(
+                                    rect.x0 - 15,  # Slight left shift to catch standard inline icons
+                                    rect.y0 - 1, 
+                                    rect.x1 + 1, 
+                                    rect.y1 + 1
+                                )
+                                
+                                # Cover with pure white mask
+                                page.add_redact_annot(safe_rect, fill=(1, 1, 1))
+                                redactions_applied += 1
+                                
+        # Permanently execute the structural redactions on this page
         page.apply_redactions()
-    
+        
     output_buffer = io.BytesIO()
     doc.save(output_buffer, garbage=4, deflate=True)
     doc.close()
     
-    return output_buffer.getvalue(), redactions_found
+    return output_buffer.getvalue(), redactions_applied
 
 if uploaded_file is not None:
     file_bytes = uploaded_file.read()
     
     if st.button("Clean PDF Document", type="primary"):
-        with st.spinner("Processing clean layout extraction..."):
+        with st.spinner("Executing targeted text span cleaning..."):
             try:
                 scrubbed_pdf, count = redact_pdf(file_bytes)
                 
                 if count == 0:
-                    st.warning("No core contact channels detected.")
+                    st.warning("No contact channels or inline labels were found.")
                 else:
-                    st.success("Successfully cleaned contact data layers cleanly!")
+                    st.success("Successfully removed contact data while retaining your name layout!")
                 
                 st.download_button(
                     label="Download Redacted PDF",
