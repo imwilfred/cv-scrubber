@@ -17,28 +17,22 @@ layout_style = st.sidebar.selectbox("Select layout style:", options=["Standard L
 if layout_style != st.session_state.active_layout:
     st.session_state.active_layout = layout_style
     if "Two-Column" in layout_style: st.session_state.top_boundary_val, st.session_state.h_limit_val, st.session_state.v_limit_val = 88, 220, 260
-    else: st.session_state.top_boundary_val, st.session_state.h_limit_val, st.session_state.v_limit_val = 0, 56, 5
+    else: st.session_state.top_boundary_val, st.session_state.h_limit_val, st.session_state.v_limit_val = 0, 180, 100
 
 uploaded_file = st.file_uploader("Upload the PDF Resume", type=["pdf", "docx", "doc"])
 
 if uploaded_file is not None and uploaded_file.name.lower().endswith((".docx", ".doc")):
-    st.error("⚠️ Invalid File Type Detected!")
+    st.error("?? Invalid File Type Detected!")
     st.markdown("Our CV Scrubber can only process **PDF files**.\n\n**How to convert your Word document:**\n1. Open file in Word.\n2. Click **File** -> **Save As**.\n3. Select **PDF (*.pdf)** from format list.\n4. Upload new PDF here.")
     st.stop()
 
 def core_contact_check(text):
     text_lower = text.lower().strip()
-    return (bool(re.search(r'[\w\.-]+@[\w\.-]+\.\w+', text)) or 
-            bool(re.search(r'\+?\d{1,4}[-.\s]?\(?\d{1,3}?\)?[-.\s]?\d{3,4}', text)) or 
-            "linkedin.com" in text_lower or "/in/" in text_lower or "www." in text_lower or 
-            "http" in text_lower or "@hotmail" in text_lower or "@yahoo" in text_lower or 
-            "@outlook" in text_lower)
+    return bool(re.search(r'[\w\.-]+@[\w\.-]+\.\w+', text)) or bool(re.search(r'\+?\d{1,4}[-.\s]?\(?\d{1,3}?\)?[-.\s]?\d{3,4}', text)) or "linkedin.com" in text_lower or "/in/" in text_lower or "www." in text_lower
 
 if uploaded_file is not None and uploaded_file.name.lower().endswith(".pdf"):
     file_bytes = uploaded_file.read()
-    uploaded_file.seek(0)
-    
-    if st.sidebar.button("🔮 Auto-Tune to Fit Layout", type="primary"):
+    if st.sidebar.button("?? Auto-Tune to Fit Layout", type="primary"):
         try:
             doc = fitz.open(stream=file_bytes, filetype="pdf")
             first_page = doc[0]
@@ -49,15 +43,15 @@ if uploaded_file is not None and uploaded_file.name.lower().endswith(".pdf"):
                     for span in line.get("spans", []):
                         txt = span["text"].upper().strip()
                         if core_contact_check(span["text"]): contact_boxes.append(fitz.Rect(span["bbox"]))
-                        if txt in ["PROFILE", "EXPERIENCE", "EDUCATION"]: profile_x0 = span["bbox"][0]
+                        if txt in ["PROFILE", "EXPERIENCE"]: profile_x0 = span["bbox"]
             if "Two-Column" in layout_style:
                 st.session_state.top_boundary_val = 85
-                st.session_state.h_limit_val = int(profile_x0) if profile_x0 else 220
+                st.session_state.h_limit_val = int(profile_x0[0]) if profile_x0 else 220
                 st.session_state.v_limit_val = int(max([r.y1 for r in contact_boxes])) + 15 if contact_boxes else 260
             else:
                 st.session_state.top_boundary_val = 0
-                st.session_state.h_limit_val = 56
-                st.session_state.v_limit_val = 5
+                st.session_state.h_limit_val = int(min([r.x0 for r in contact_boxes])) - 15 if contact_boxes else 180
+                st.session_state.v_limit_val = int(max([r.y1 for r in contact_boxes])) + 5 if contact_boxes else 100
             doc.close()
             st.sidebar.success("Auto-tuned successfully!")
         except Exception as e: st.sidebar.error(f"Auto-tune failed: {e}")
@@ -71,8 +65,9 @@ if "Two-Column" in layout_style:
     h_limit = st.sidebar.slider("Mask Width Barrier", 100, 300, st.session_state.h_limit_val, 1, key="h_slider_two")
     v_limit = st.sidebar.slider("Mask Height Ceiling", 100, 500, st.session_state.v_limit_val, 1, key="v_slider_two")
 else:
-    h_limit = st.sidebar.slider("Icon Extension Offset Left", 10, 150, st.session_state.h_limit_val, 1, key="h_slider_std")
-    v_limit = st.sidebar.slider("Mask Extra Bottom Padding", 0, 50, st.session_state.v_limit_val, 1, key="v_slider_std")
+    # FIXED: Lowered min_value from 200 to 50 to allow full horizontal clearance
+    h_limit = st.sidebar.slider("Right Mask Start Width", 50, 450, st.session_state.h_limit_val, 1, key="h_slider_std")
+    v_limit = st.sidebar.slider("Right Mask Vertical Limit", 50, 250, st.session_state.v_limit_val, 1, key="v_slider_std")
 st.session_state.h_limit_val, st.session_state.v_limit_val = h_limit, v_limit
 
 st.sidebar.markdown("---")
@@ -81,61 +76,21 @@ zoom_level = st.sidebar.slider("Document Zoom Level", 300, 1200, 750, 25)
 def redact_pdf(file_bytes, layout_profile, w_barrier, h_ceiling, top_start):
     doc = fitz.open(stream=file_bytes, filetype="pdf")
     for page in doc:
-        page_text, page_dict = page.get_text(), page.get_text("dict")
-        
-        # 🛡️ UNIFIED FIXED PASS: Scans upper quadrant for name blocks safely
-        protected_words = set()
-        for block in page_dict.get("blocks", []):
-            for line in block.get("lines", []):
-                for span in line.get("spans", []):
-                    bx0, by0, bx1, by1 = span["bbox"]
-                    # If text sits at the top row, has no contact markers, and isn't an explicit heading title
-                    if by0 < 60 and not core_contact_check(span["text"]):
-                        clean_txt = span["text"].upper().strip()
-                        if clean_txt not in ["EDUCATION", "EXPERIENCE", "PROFILE"]:
-                            for token in span["text"].lower().split():
-                                protected_words.add(token.strip(":,.-_"))
-
+        page_text, page_dict, page_width = page.get_text(), page.get_text("dict"), page.rect.width
         if "Standard Layout" in layout_profile:
+            page.add_redact_annot(fitz.Rect(w_barrier, top_start, page_width - 15, h_ceiling), fill=(1, 1, 1))
             targets = set()
             for e in re.findall(r'[\w\.-]+@[\w\.-]+\.\w+', page_text): targets.add(e.strip())
             for p in re.findall(r'\+?\d{1,4}[-.\s]?\(?\d{1,3}?\)?[-.\s]?\d{3,4}', page_text):
                 if len(p.strip()) > 6: targets.add(p.strip())
-            for word in ["mobile:", "email:", "phone:", "website:", "linkedin:", "hotmail", "yahoo", "outlook", "today", "cna"]:
-                if word in page_text.lower(): targets.add(word)
-                
-            for link in page.get_links():
-                l_rect = fitz.Rect(link["from"])
-                if l_rect.y0 < 150:
-                    page.add_redact_annot(fitz.Rect(l_rect.x0 - w_barrier, l_rect.y0 - 6, l_rect.x1 + 30, l_rect.y1 + h_ceiling), fill=(1, 1, 1))
-
             for target in targets:
-                for rect in page.search_for(target):
-                    # Safety Lock: Verify if this specific search item touches any registered name words
-                    intersecting_spans = page.get_text("words", clip=rect)
-                    is_protected = False
-                    for w_item in intersecting_spans:
-                        w_text_clean = w_item[4].lower().strip(":,.-_") if len(w_item) > 4 else ""
-                        if w_text_clean in protected_words and w_text_clean not in ["today", "cna", "hotmail"]:
-                            is_protected = True
-                    
-                    if is_protected:
-                        continue
-                        
-                    icon_eating_rect = fitz.Rect(rect.x0 - w_barrier, rect.y0 - 6, rect.x1 + 30, rect.y1 + h_ceiling)
-                    page.add_redact_annot(icon_eating_rect, fill=(1, 1, 1))
-            
-            for s_rect in page.search_for("/"):
-                if s_rect.y0 < 150 and s_rect.x0 > 150:
-                    page.add_redact_annot(fitz.Rect(s_rect.x0 - 4, s_rect.y0 - 4, s_rect.x1 + 4, s_rect.y1 + 4), fill=(1, 1, 1))
+                for rect in page.search_for(target): page.add_redact_annot(fitz.Rect(rect.x0 - 2, rect.y0 - 1, rect.x1 + 2, rect.y1 + 1), fill=(1, 1, 1))
         else:
             main_column_left = float(w_barrier)
             for block in page_dict.get("blocks", []):
                 for line in block.get("lines", []):
                     for span in line.get("spans", []):
-                        if span["text"].upper().strip() in ["PROFILE", "EXPERIENCE", "EDUCATION"]:
-                            main_column_left = float(span["bbox"][0])
-                            break
+                        if span["text"].upper().strip() in ["PROFILE", "EXPERIENCE"] and w_barrier == 220: main_column_left = float(span["bbox"][0])
             for block in page_dict.get("blocks", []):
                 bx0, by0, bx1, by1 = block["bbox"]
                 if bx1 < main_column_left and top_start < by0 < h_ceiling: page.add_redact_annot(fitz.Rect(0, max(by0 - 4, top_start), main_column_left - 10, min(by1 + 4, h_ceiling)), fill=(1, 1, 1))
@@ -147,7 +102,6 @@ def redact_pdf(file_bytes, layout_profile, w_barrier, h_ceiling, top_start):
     return output_buffer.getvalue(), total_pages
 
 if uploaded_file is not None and uploaded_file.name.lower().endswith(".pdf"):
-    file_bytes = uploaded_file.read()
     base_name = uploaded_file.name[:-4]
     output_filename = f"{base_name}_Redacted.pdf"
     col1, col2 = st.columns(2)
@@ -160,8 +114,7 @@ if uploaded_file is not None and uploaded_file.name.lower().endswith(".pdf"):
             preview_page = st.selectbox("Flip Preview Page:", options=list(range(1, total_pages + 1)), index=0) if total_pages > 1 else 1
         except Exception as e: st.error(f"Error compiling document: {e}"); scrubbed_pdf, total_pages, preview_page = None, 1, 1
     st.markdown("---")
-    if st.button("🧹 Clear Current File", use_container_width=True):
-        st.unstore() if hasattr(st, "unstore") else None
+    if st.button("?? Clear Current File", use_container_width=True):
         st.rerun()
     with col2:
         st.subheader("Live Document Preview")
