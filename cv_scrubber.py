@@ -6,18 +6,17 @@ st.set_page_config(page_title="PDF CV Scrubber", layout="wide")
 st.title("Interactive PDF CV Contact Scrubber")
 st.write("Upload your resume and use Auto-Tune or manual sliders.")
 
-# --- MODERN STREAMLIT CSS FIX: Universally targets and hides the native text extensions ---
+# --- PRECISION CSS FIX: Target ONLY the subcaption text layer cleanly ---
 st.markdown(
     """
     <style>
-    /* Target any small subtitle text container inside the uploader to erase the extensions */
-    div[data-testid="stFileUploader"] small, 
-    div[data-testid="stFileUploader"] div,
-    [class*="FileUploader"] small {
+    /* Surgically target the exact small caption text container node */
+    div[data-testid="stFileUploader"] p + div div small {
         font-size: 0 !important;
         line-height: 0 !important;
         color: transparent !important;
         display: none !important;
+        visibility: hidden !important;
     }
     </style>
     """,
