@@ -1,5 +1,5 @@
 import streamlit as st
-import fitz  # PyMuPDF
+import fitz
 import re
 import io
 from pdf2image import convert_from_bytes
@@ -13,7 +13,7 @@ st.set_page_config(
 st.title("Interactive PDF CV Contact Scrubber")
 st.write("Upload your resume and use Auto-Tune or manual sliders.")
 
-# --- Initialize session states safely ---
+# --- Session States ---
 if "top_boundary_val" not in st.session_state:
     st.session_state.top_boundary_val = 88
 if "h_limit_val" not in st.session_state:
@@ -23,18 +23,14 @@ if "v_limit_val" not in st.session_state:
 if "active_layout" not in st.session_state:
     st.session_state.active_layout = "Standard Layout"
 
-# --- Sidebar Configuration ---
+# --- Sidebar ---
 st.sidebar.header("Layout Settings")
 layout_style = st.sidebar.selectbox(
     "Select your CV's layout style:",
-    options=[
-        "Standard Layout",
-        "Two-Column Sidebar Layout"
-    ],
+    options=["Standard Layout", "Two-Column Sidebar Layout"],
     key="layout_style_selection"
 )
 
-# Reset defaults layout tracking elements cleanly
 if layout_style != st.session_state.active_layout:
     st.session_state.active_layout = layout_style
     if "Two-Column" in layout_style:
@@ -46,22 +42,42 @@ if layout_style != st.session_state.active_layout:
         st.session_state.h_limit_val = 310
         st.session_state.v_limit_val = 115
 
-uploaded_file = st.file_uploader("Choose a PDF resume", type="pdf")
+# --- File Uploader and Extension Warning Gate ---
+uploaded_file = st.file_uploader(
+    "Choose a PDF resume", 
+    type=["pdf", "docx", "doc"]
+)
+
+if uploaded_file is not None:
+    filename_lower = uploaded_file.name.lower()
+    
+    if filename_lower.endswith((".docx", ".doc")):
+        st.error("⚠️ Invalid File Type Detected!")
+        
+        msg = "Our CV Scrubber can only process **PDF files**.\n\n"
+        msg += "**How to convert your Word document:**\n"
+        msg += "1. Open your document in Microsoft Word.\n"
+        msg += "2. Click **File** -> **Save As** (or **Export**).\n"
+        msg += "3. Select **PDF (*.pdf)** from the file format dropdown list.\n"
+        msg += "4. Upload your new PDF file here."
+        
+        st.markdown(msg)
+        st.stop()
 
 def core_contact_check(text):
     text_lower = text.lower().strip()
-    has_e = bool(re.search(r'[\w\.-]++@[[\w\.-]]++\.\w++', text))
-    has_p = bool(re.search(r'\+??\d{{1,4}}[-.\s]??\(??\d{{1,3}}??\)??[-.\s]??\d{{3,4}}', text))
+    has_e = bool(re.search(r'[\w\.-]+@[\w\.-]+\.\w+', text))
+    has_p = bool(re.search(r'\+?\d{1,4}[-.\s]?\(?\d{1,3}?\)?[-.\s]?\d{3,4}', text))
     has_l = "linkedin.com" in text_lower or "/in/" in text_lower
     has_w = "www." in text_lower or "http" in text_lower
     return has_e or has_p or has_l or has_w
 
-# --- AUTO-TUNE SYSTEM TRIGGER ---
+# --- AUTO-TUNE LOGIC ---
 if uploaded_file is not None:
     if st.sidebar.button("🔮 Auto-Tune to Fit Layout", type="primary"):
         try:
             doc = fitz.open(stream=uploaded_file.getvalue(), filetype="pdf")
-            first_page = doc[0]
+            first_page = doc
             page_dict = first_page.get_text("dict")
             
             contact_boxes = []
@@ -76,7 +92,7 @@ if uploaded_file is not None:
                                 if core_contact_check(span["text"]):
                                     contact_boxes.append(fitz.Rect(span["bbox"]))
                                 if txt in ["PROFILE", "EXPERIENCE"]:
-                                    profile_x0 = span["bbox"][0]
+                                    profile_x0 = span["bbox"]
 
             if "Two-Column" in layout_style:
                 st.session_state.top_boundary_val = 85
@@ -99,7 +115,7 @@ if uploaded_file is not None:
         except Exception as tune_err:
             st.sidebar.error(f"Auto-tune failed: {tune_err}")
 
-# --- Side Panels Adjustments Elements ---
+# --- Sliders Control Section ---
 st.sidebar.markdown("---")
 st.sidebar.header("Live Mask Adjustment")
 
@@ -152,9 +168,9 @@ def redact_pdf(file_bytes, layout_profile, w_barrier, h_ceiling, top_start):
             page.add_redact_annot(right_mask, fill=(1, 1, 1))
             
             targets = set()
-            emails = re.findall(r'[\w\.-]++@[[\w\.-]]++\.\w++', page_text)
+            emails = re.findall(r'[\w\.-]+@[\w\.-]+\.\w+', page_text)
             for e in emails: targets.add(e.strip())
-            phones = re.findall(r'\+??\d{{1,4}}[-.\s]??\(??\d{{1,3}}??\)??[-.\s]??\d{{3,4}}', page_text)
+            phones = re.findall(r'\+?\d{1,4}[-.\s]?\(?\d{1,3}?\)?[-.\s]?\d{3,4}', page_text)
             for p in phones:
                 if len(p.strip()) > 6: targets.add(p.strip())
                 
@@ -173,7 +189,7 @@ def redact_pdf(file_bytes, layout_profile, w_barrier, h_ceiling, top_start):
                                 txt = span["text"].upper().strip()
                                 if txt in ["PROFILE", "EXPERIENCE"]:
                                     if w_barrier == 220:
-                                        main_column_left = float(span["bbox"][0])
+                                        main_column_left = float(span["bbox"])
                                     break
             
             for block in page_dict.get("blocks", []):
@@ -190,15 +206,13 @@ def redact_pdf(file_bytes, layout_profile, w_barrier, h_ceiling, top_start):
     doc.close()
     return output_buffer.getvalue(), total_pages
 
-# --- Layout Configuration Views ---
+# --- Layout Rendering UI ---
 if uploaded_file is not None:
     file_bytes = uploaded_file.read()
-    
-    # 🎯 DYNAMIC FILENAME GENERATION 
-    # Extracts original string name (e.g. 'Resume_Jack Tan.pdf') and changes it to 'Resume_Jack Tan_Redacted.pdf'
     original_name = uploaded_file.name
+    
     if original_name.lower().endswith(".pdf"):
-        base_name = original_name[:-4]  # Strip out '.pdf'
+        base_name = original_name[:-4]
     else:
         base_name = original_name
     output_filename = f"{base_name}_Redacted.pdf"
@@ -216,7 +230,7 @@ if uploaded_file is not None:
             st.download_button(
                 label="Download Redacted PDF",
                 data=scrubbed_pdf,
-                file_name=output_filename,  # Pass the dynamic file name variant here
+                file_name=output_filename,
                 mime="application/pdf",
                 type="primary"
             )
@@ -247,8 +261,3 @@ if uploaded_file is not None:
                 if images:
                     st.image(
                         images, 
-                        caption=f"Page {preview_page} of {total_pages}", 
-                        width=zoom_level
-                    )
-            except Exception as img_err:
-                st.error(f"Visual preview rendering error: {img_err}")
