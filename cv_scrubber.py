@@ -6,27 +6,6 @@ st.set_page_config(page_title="PDF CV Scrubber", layout="wide")
 st.title("Interactive PDF CV Contact Scrubber")
 st.write("Upload your resume and use Auto-Tune or manual sliders.")
 
-# --- CSS Hack to override the file type subcaption label text ---
-st.markdown(
-    """
-    <style>
-    div[data-testid="stFileUploaderSubcaption"] {
-        visibility: hidden;
-        position: relative;
-    }
-    div[data-testid="stFileUploaderSubcaption"]::after {
-        content: "Limit 200MB per file • PDF";
-        visibility: visible;
-        position: absolute;
-        top: 0;
-        left: 0;
-        color: #808495;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
-
 if "top_boundary_val" not in st.session_state: st.session_state.top_boundary_val = 88
 if "h_limit_val" not in st.session_state: st.session_state.h_limit_val = 220
 if "v_limit_val" not in st.session_state: st.session_state.v_limit_val = 260
@@ -46,7 +25,16 @@ if layout_style != st.session_state.active_layout:
     else:
         st.session_state.top_boundary_val, st.session_state.h_limit_val, st.session_state.v_limit_val = 32, 310, 115
 
-uploaded_file = st.file_uploader("Choose a PDF resume", type=["pdf", "docx", "doc"])
+# --- FIXED SECTION: Custom text block replaces the automatic system labels entirely ---
+st.markdown("Choose a PDF resume")
+st.caption("Limit 200MB per file • PDF")
+
+# label_visibility="collapsed" completely deletes the automatic "PDF, DOCX, DOC" subtitle string from the page layout
+uploaded_file = st.file_uploader(
+    "Choose a PDF resume hidden label", 
+    type=["pdf", "docx", "doc"], 
+    label_visibility="collapsed"
+)
 
 if uploaded_file is not None:
     filename_lower = uploaded_file.name.lower()
