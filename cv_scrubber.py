@@ -14,32 +14,33 @@ def redact_pdf(file_bytes):
     # Open document from memory stream
     doc = fitz.open(stream=file_bytes, filetype="pdf")
     
-    # Powerful regex list targeting contact details across formatting boundaries
-    patterns = [
-        # Match standard email structures
-        r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}',
-        
-        # Match mobile/phone numbers with international codes, spaces, or brackets
-        r'\+?\d{1,4}[-.\s]?\(?\d{1,3}?\)?[-.\s]?\d{3,4}[-.\s]?\d{3,4}',
-        
-        # Match LinkedIn URLs specifically (with or without http/www/slashes)
-        r'(https?://)?(www\.)?linkedin\.com/in/[a-zA-Z0-9_-]+/?',
-        
-        # General backup URL rule for profiles (GitHub, portfolios)
-        r'(https?://\S+|www\.\S+)'
-    ]
+    # Precise regex patterns
+    email_pattern = r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
+    phone_pattern = r'\+?\d{1,4}[-.\s]?\(?\d{1,3}?\)?[-.\s]?\d{3,4}[-.\s]?\d{3,4}'
+    linkedin_pattern = r'(https?://)?(www\.)?linkedin\.com/in/[a-zA-Z0-9_-]+/?'
+    general_url_pattern = r'(https?://\S+|www\.\S+)'
+    
+    # Combined master regex
+    master_regex = re.compile(f"({email_pattern})|({phone_pattern})|({linkedin_pattern})|({general_url_pattern})")
     
     redactions_found = 0
     
     for page in doc:
-        for pattern in patterns:
-            # page.search_for allows flag=1 for full regex evaluation across bounding boxes
-            matches = page.search_for(pattern, use_regex=True)
+        # Extract full page text to let python re engine find matches contextually
+        page_text = page.get_text()
+        
+        # Use a set to prevent repeating searches for the exact same phone/email text
+        unique_matches = set()
+        for match in master_regex.finditer(page_text):
+            unique_matches.add(match.group(0).strip())
             
-            for rect in matches:
-                # Add a black redaction bar over the match coordinates
-                page.add_redact_annot(rect, fill=(0, 0, 0))
-                redactions_found += 1
+        # Search layout coordinates for each identified string literal
+        for text_to_hide in unique_matches:
+            if len(text_to_hide) > 3:  # Avoid matching accidental whitespace artifact blocks
+                rect_list = page.search_for(text_to_hide)
+                for rect in rect_list:
+                    page.add_redact_annot(rect, fill=(0, 0, 0))
+                    redactions_found += 1
                 
         # Commit redactions permanently onto the current page layout
         page.apply_redactions()
@@ -64,7 +65,6 @@ if uploaded_file is not None:
                 else:
                     st.success(f"Scrubbing Complete! Applied {count} redaction overlays.")
                 
-                # Render button cleanly without structural emojis
                 st.download_button(
                     label="Download Redacted PDF",
                     data=scrubbed_pdf,
