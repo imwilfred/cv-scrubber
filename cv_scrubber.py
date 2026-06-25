@@ -5,7 +5,7 @@ import io
 
 st.set_page_config(page_title="PDF CV Scrubber", page_icon="??")
 
-st.title("?? PDF CV Contact Information Scrubber")
+st.title("PDF CV Contact Information Scrubber")
 st.write("Upload a PDF resume to instantly mask emails, phone numbers, and URLs with black bars.")
 
 uploaded_file = st.file_uploader("Choose a PDF resume", type="pdf")
