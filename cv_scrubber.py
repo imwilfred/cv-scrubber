@@ -6,11 +6,17 @@ st.set_page_config(page_title="PDF CV Scrubber", layout="wide")
 st.title("Interactive PDF CV Contact Scrubber")
 st.write("Upload your resume and use Auto-Tune or manual sliders.")
 
-# --- THE BULLETPROOF CSS FIX: Completely hides the native subcaption container ---
+# --- MODERN STREAMLIT CSS FIX: Universally targets and hides the native text extensions ---
 st.markdown(
     """
     <style>
-    div[data-testid="stFileUploaderSubcaption"] {
+    /* Target any small subtitle text container inside the uploader to erase the extensions */
+    div[data-testid="stFileUploader"] small, 
+    div[data-testid="stFileUploader"] div,
+    [class*="FileUploader"] small {
+        font-size: 0 !important;
+        line-height: 0 !important;
+        color: transparent !important;
         display: none !important;
     }
     </style>
@@ -39,7 +45,7 @@ if layout_style != st.session_state.active_layout:
 
 uploaded_file = st.file_uploader("Upload the PDF Resume", type=["pdf", "docx", "doc"])
 
-# --- NEW PYTHON LABEL: Custom clean caption rendered explicitly below the uploader block ---
+# --- CLEAN USER INTERFACE LABEL ---
 st.caption("200MB per file")
 
 if uploaded_file is not None:
