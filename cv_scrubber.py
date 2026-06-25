@@ -35,11 +35,14 @@ def core_contact_check(text):
             "@outlook" in text_lower)
 
 if uploaded_file is not None and uploaded_file.name.lower().endswith(".pdf"):
+    # Read the data and reset the position indicator to avoid empty streams
     file_bytes = uploaded_file.read()
+    uploaded_file.seek(0)
+    
     if st.sidebar.button("🔮 Auto-Tune to Fit Layout", type="primary"):
         try:
             doc = fitz.open(stream=file_bytes, filetype="pdf")
-            first_page = doc
+            first_page = doc[0]
             page_dict = first_page.get_text("dict")
             contact_boxes, profile_x0 = [], None
             for block in page_dict.get("blocks", []):
@@ -81,15 +84,14 @@ def redact_pdf(file_bytes, layout_profile, w_barrier, h_ceiling, top_start):
     for page in doc:
         page_text, page_dict = page.get_text(), page.get_text("dict")
         
-        # 🛡️ PASS 1: AUTOMATICALLY EXTRACT AND REGISTER EXCLUDED USERNAME TOKENS
         protected_words = set()
-        first_block = page_dict.get("blocks", [])[0] if page_dict.get("blocks", []) else {}
-        for line in first_block.get("lines", []):
-            for span in line.get("spans", []):
-                # Grabs the first raw text line (usually your name) and registers the token fragments safely
-                if not core_contact_check(span["text"]) and len(span["text"].strip()) > 1:
-                    for token in span["text"].lower().split():
-                        protected_words.add(token.strip(":,.-_"))
+        if page_dict.get("blocks", []):
+            first_block = page_dict.get("blocks", [])[0]
+            for line in first_block.get("lines", []):
+                for span in line.get("spans", []):
+                    if not core_contact_check(span["text"]) and len(span["text"].strip()) > 1:
+                        for token in span["text"].lower().split():
+                            protected_words.add(token.strip(":,.-_"))
 
         if "Standard Layout" in layout_profile:
             targets = set()
@@ -106,7 +108,6 @@ def redact_pdf(file_bytes, layout_profile, w_barrier, h_ceiling, top_start):
 
             for target in targets:
                 for rect in page.search_for(target):
-                    # 🛡️ GUARD RAIL PASS: Verify if the selected match coordinate text touches any registered name words
                     intersecting_spans = page.get_text("words", clip=rect)
                     is_protected = False
                     for w_item in intersecting_spans:
@@ -115,7 +116,7 @@ def redact_pdf(file_bytes, layout_profile, w_barrier, h_ceiling, top_start):
                             is_protected = True
                     
                     if is_protected:
-                        continue # Safely skips drawing the white mask over your personal name tokens
+                        continue
                         
                     icon_eating_rect = fitz.Rect(rect.x0 - w_barrier, rect.y0 - 6, rect.x1 + 30, rect.y1 + h_ceiling)
                     page.add_redact_annot(icon_eating_rect, fill=(1, 1, 1))
@@ -142,7 +143,6 @@ def redact_pdf(file_bytes, layout_profile, w_barrier, h_ceiling, top_start):
     return output_buffer.getvalue(), total_pages
 
 if uploaded_file is not None and uploaded_file.name.lower().endswith(".pdf"):
-    file_bytes = uploaded_file.read()
     base_name = uploaded_file.name[:-4]
     output_filename = f"{base_name}_Redacted.pdf"
     col1, col2 = st.columns(2)
