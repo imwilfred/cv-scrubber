@@ -4,29 +4,37 @@ import re
 import io
 from pdf2image import convert_from_bytes
 
-st.set_page_config(page_title="PDF CV Scrubber", page_icon="doc", layout="wide")
+st.set_page_config(
+    page_title="PDF CV Scrubber", 
+    page_icon="doc", 
+    layout="wide"
+)
 
 st.title("Interactive PDF CV Contact Scrubber")
-st.write("Upload your resume and use Auto-Tune or manual sliders to frame your layout perfectly.")
+st.write("Upload your resume and use Auto-Tune or manual sliders.")
 
-# Initialize session state variables to track slider overrides dynamically
-if "top_boundary_val" not in st.session_state: st.session_state.top_boundary_val = 88
-if "h_limit_val" not in st.session_state: st.session_state.h_limit_val = 220
-if "v_limit_val" not in st.session_state: st.session_state.v_limit_val = 260
-if "active_layout" not in st.session_state: st.session_state.active_layout = "Standard Layout (Right-aligned Contact Text / No Sidebar Icons)"
+# --- Initialize session states safely ---
+if "top_boundary_val" not in st.session_state:
+    st.session_state.top_boundary_val = 88
+if "h_limit_val" not in st.session_state:
+    st.session_state.h_limit_val = 220
+if "v_limit_val" not in st.session_state:
+    st.session_state.v_limit_val = 260
+if "active_layout" not in st.session_state:
+    st.session_state.active_layout = "Standard Layout"
 
-# --- Sidebar Controls ---
+# --- Sidebar Configuration ---
 st.sidebar.header("Layout Settings")
 layout_style = st.sidebar.selectbox(
     "Select your CV's layout style:",
     options=[
-        "Standard Layout (Right-aligned Contact Text / No Sidebar Icons)",
-        "Two-Column Sidebar Layout (Vertical Stacked Icons on Left)"
+        "Standard Layout",
+        "Two-Column Sidebar Layout"
     ],
     key="layout_style_selection"
 )
 
-# Reset defaults cleanly if user manually switches layout formats in dropdown
+# Reset defaults layout tracking elements cleanly
 if layout_style != st.session_state.active_layout:
     st.session_state.active_layout = layout_style
     if "Two-Column" in layout_style:
@@ -42,14 +50,15 @@ uploaded_file = st.file_uploader("Choose a PDF resume", type="pdf")
 
 def core_contact_check(text):
     text_lower = text.lower().strip()
-    return (bool(re.search(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', text)) or
-            bool(re.search(r'\+?\d{1,4}[-.\s]?\(?\d{1,3}?\)?[-.\s]?\d{3,4}[-.\s]?\d{3,4}', text)) or
-            "linkedin.com" in text_lower or "/in/" in text_lower or "com/in" in text_lower or
-            "www." in text_lower or "http" in text_lower)
+    has_e = bool(re.search(r'[\w\.-]+@[\w\.-]+\.\w+', text))
+    has_p = bool(re.search(r'\+?\d{1,4}[-.\s]?\(?\d{1,3}?\)?[-.\s]?\d{3,4}', text))
+    has_l = "linkedin.com" in text_lower or "/in/" in text_lower
+    has_w = "www." in text_lower or "http" in text_lower
+    return has_e or has_p or has_l or has_w
 
-# --- AUTO-TUNE LOGIC BUTTON ---
+# --- AUTO-TUNE SYSTEM TRIGGER ---
 if uploaded_file is not None:
-    if st.sidebar.button("🔮 Auto-Tune to Fit Layout", type="primary", use_container_width=True):
+    if st.sidebar.button("🔮 Auto-Tune to Fit Layout", type="primary"):
         try:
             doc = fitz.open(stream=uploaded_file.getvalue(), filetype="pdf")
             first_page = doc[0]
@@ -66,7 +75,7 @@ if uploaded_file is not None:
                                 txt = span["text"].upper().strip()
                                 if core_contact_check(span["text"]):
                                     contact_boxes.append(fitz.Rect(span["bbox"]))
-                                if txt in ["PROFILE", "PROFESSIONAL EXPERIENCE", "EXPERIENCE"]:
+                                if txt in ["PROFILE", "EXPERIENCE"]:
                                     profile_x0 = span["bbox"][0]
 
             if "Two-Column" in layout_style:
@@ -86,16 +95,16 @@ if uploaded_file is not None:
                     st.session_state.v_limit_val = 115
                     
             doc.close()
-            st.sidebar.success("Auto-tuned successfully! Look at preview.")
+            st.sidebar.success("Auto-tuned successfully!")
         except Exception as tune_err:
-            st.sidebar.error(f"Auto-tune parsing failed: {tune_err}")
+            st.sidebar.error(f"Auto-tune failed: {tune_err}")
 
-# --- Render Fine Adjustment Sliders (1px Step Controls) ---
+# --- Side Panels Adjustments Elements ---
 st.sidebar.markdown("---")
 st.sidebar.header("Live Mask Adjustment")
 
 top_boundary = st.sidebar.slider(
-    "Mask Top Boundary (Vertical Start)", min_value=0, max_value=200, 
+    "Mask Top Boundary", min_value=0, max_value=200, 
     value=st.session_state.top_boundary_val, step=1, key="top_slider"
 )
 st.session_state.top_boundary_val = top_boundary
@@ -122,17 +131,15 @@ else:
 st.session_state.h_limit_val = h_limit
 st.session_state.v_limit_val = v_limit
 
-# --- Preview Zoom Controller Slider Section ---
 st.sidebar.markdown("---")
 st.sidebar.header("Preview Scale Settings")
 zoom_level = st.sidebar.slider(
-    "🔍 Document Image Zoom Level", 
-    min_value=300, max_value=1200, value=750, step=25,
-    help="Increase to scale up document width on screen, decrease to view the whole page layout structure smoothly."
+    "Document Zoom Level", min_value=300, max_value=1200, 
+    value=750, step=25
 )
 
-# --- Processing Pipeline Functions ---
-def redact_pdf(file_bytes, layout_profile, width_barrier, height_ceiling, top_start):
+# --- Core Redaction Engine Pipeline ---
+def redact_pdf(file_bytes, layout_profile, w_barrier, h_ceiling, top_start):
     doc = fitz.open(stream=file_bytes, filetype="pdf")
     
     for page in doc:
@@ -141,14 +148,14 @@ def redact_pdf(file_bytes, layout_profile, width_barrier, height_ceiling, top_st
         page_width = page.rect.width
         
         if "Standard Layout" in layout_profile:
-            right_mask = fitz.Rect(width_barrier, top_start, page_width - 15, height_ceiling)
+            right_mask = fitz.Rect(w_barrier, top_start, page_width - 15, h_ceiling)
             page.add_redact_annot(right_mask, fill=(1, 1, 1))
             
             targets = set()
-            emails = re.findall(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', page_text)
+            emails = re.findall(r'[\w\.-]+@[\w\.-]+\.\w+', page_text)
             for e in emails: targets.add(e.strip())
-            phones = re.findall(r'\+?\d{1,4}[-.\s]?\(?\d{1,3}?\)?[-.\s]?\d{3,4}[-.\s]?\d{3,4}', page_text)
-            for p in phones: 
+            phones = re.findall(r'\+?\d{1,4}[-.\s]?\(?\d{1,3}?\)?[-.\s]?\d{3,4}', page_text)
+            for p in phones:
                 if len(p.strip()) > 6: targets.add(p.strip())
                 
             for target in targets:
@@ -157,22 +164,22 @@ def redact_pdf(file_bytes, layout_profile, width_barrier, height_ceiling, top_st
                     tight_rect = fitz.Rect(rect.x0 - 2, rect.y0 - 1, rect.x1 + 2, rect.y1 + 1)
                     page.add_redact_annot(tight_rect, fill=(1, 1, 1))
         else:
-            main_column_left = float(width_barrier)
+            main_column_left = float(w_barrier)
             for block in page_dict.get("blocks", []):
                 if "lines" in block:
                     for line in block["lines"]:
                         if "spans" in line:
                             for span in line["spans"]:
                                 txt = span["text"].upper().strip()
-                                if txt in ["PROFILE", "PROFESSIONAL EXPERIENCE", "EXPERIENCE"]:
-                                    if width_barrier == 220:
+                                if txt in ["PROFILE", "EXPERIENCE"]:
+                                    if w_barrier == 220:
                                         main_column_left = float(span["bbox"][0])
                                     break
             
             for block in page_dict.get("blocks", []):
                 bx0, by0, bx1, by1 = block["bbox"]
-                if bx1 < main_column_left and top_start < by0 < height_ceiling:
-                    sidebar_mask = fitz.Rect(0, max(by0 - 4, top_start), main_column_left - 10, min(by1 + 4, height_ceiling))
+                if bx1 < main_column_left and top_start < by0 < h_ceiling:
+                    sidebar_mask = fitz.Rect(0, max(by0 - 4, top_start), main_column_left - 10, min(by1 + 4, h_ceiling))
                     page.add_redact_annot(sidebar_mask, fill=(1, 1, 1))
                     
         page.apply_redactions()
@@ -183,7 +190,7 @@ def redact_pdf(file_bytes, layout_profile, width_barrier, height_ceiling, top_st
     doc.close()
     return output_buffer.getvalue(), total_pages
 
-# --- Page Layout Rendering Matrix ---
+# --- Layout Configuration Views ---
 if uploaded_file is not None:
     file_bytes = uploaded_file.read()
     col1, col2 = st.columns(2)
@@ -191,11 +198,13 @@ if uploaded_file is not None:
     with col1:
         st.subheader("Control Actions")
         try:
-            scrubbed_pdf, total_pages = redact_pdf(file_bytes, layout_style, h_limit, v_limit, top_boundary)
-            st.success("Layout masks calculated successfully! Check preview on the right.")
+            scrubbed_pdf, total_pages = redact_pdf(
+                file_bytes, layout_style, h_limit, v_limit, top_boundary
+            )
+            st.success("Calculated successfully!")
             
             st.download_button(
-                label="📥 Download Redacted PDF",
+                label="Download Redacted PDF",
                 data=scrubbed_pdf,
                 file_name="cleaned_resume.pdf",
                 mime="application/pdf",
@@ -205,26 +214,31 @@ if uploaded_file is not None:
             if total_pages > 1:
                 st.markdown("---")
                 preview_page = st.selectbox(
-                    "📄 Flip Preview Page:",
+                    "Flip Preview Page:",
                     options=list(range(1, total_pages + 1)),
-                    index=0,
-                    help="Select which page you want to view in the layout window on the right."
+                    index=0
                 )
             else:
                 preview_page = 1
                 
         except Exception as e:
-            st.error(f"Error compiling document matrix layout: {e}")
-            scrubbed_pdf = None
-            total_pages = 1
-            preview_page = 1
+            st.error(f"Error compiling document: {e}")
+            scrubbed_pdf, total_pages, preview_page = None, 1, 1
 
     with col2:
         st.subheader("Live Document Preview")
         if scrubbed_pdf:
             try:
-                images = convert_from_bytes(scrubbed_pdf, first_page=preview_page, last_page=preview_page)
+                images = convert_from_bytes(
+                    scrubbed_pdf, 
+                    first_page=preview_page, 
+                    last_page=preview_page
+                )
                 if images:
-                    # Dynamically override and control layout display size with the interactive zoom_level variable
                     st.image(
-                        images, 
+                        images[0], 
+                        caption=f"Page {preview_page} of {total_pages}", 
+                        width=zoom_level
+                    )
+            except Exception as img_err:
+                st.error(f"Visual preview rendering error: {img_err}")
