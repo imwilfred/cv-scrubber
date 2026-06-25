@@ -35,17 +35,19 @@ if uploaded_file is not None and uploaded_file.name.lower().endswith(".pdf"):
     if st.sidebar.button("🔮 Auto-Tune to Fit Layout", type="primary"):
         try:
             doc = fitz.open(stream=file_bytes, filetype="pdf")
-            page_dict = doc.get_text("dict")
+            # FIXED: Target the first page [0] instead of the whole multi-page doc container
+            first_page = doc[0]
+            page_dict = first_page.get_text("dict")
             contact_boxes, profile_x0 = [], None
             for block in page_dict.get("blocks", []):
                 for line in block.get("lines", []):
                     for span in line.get("spans", []):
                         txt = span["text"].upper().strip()
                         if core_contact_check(span["text"]): contact_boxes.append(fitz.Rect(span["bbox"]))
-                        if txt in ["PROFILE", "EXPERIENCE"]: profile_x0 = span["bbox"][0] # FIXED: Extract index 0 immediately
+                        if txt in ["PROFILE", "EXPERIENCE"]: profile_x0 = span["bbox"]
             if "Two-Column" in layout_style:
                 st.session_state.top_boundary_val = 85
-                st.session_state.h_limit_val = int(profile_x0) if profile_x0 else 220
+                st.session_state.h_limit_val = int(profile_x0[0]) if profile_x0 else 220
                 st.session_state.v_limit_val = int(max([r.y1 for r in contact_boxes])) + 15 if contact_boxes else 260
             else:
                 st.session_state.top_boundary_val = 32
@@ -89,7 +91,8 @@ def redact_pdf(file_bytes, layout_profile, w_barrier, h_ceiling, top_start):
                 for line in block.get("lines", []):
                     for span in line.get("spans", []):
                         if span["text"].upper().strip() in ["PROFILE", "EXPERIENCE"]:
-                            main_column_left = float(span["bbox"][0]) # FIXED: Extract index 0 immediately
+                            # FIXED: Extract index 0 immediately from the coordinate matrix
+                            main_column_left = float(span["bbox"][0])
                             break
             for block in page_dict.get("blocks", []):
                 bx0, by0, bx1, by1 = block["bbox"]
@@ -117,11 +120,8 @@ with col1:
             st.error(f"Error compiling document: {e}")
             scrubbed_pdf = None
             
-    # FIXED: Clear button is now out of the file loop so it displays 100% of the time
     st.markdown("---")
     if st.button("🧹 Clear Current File", use_container_width=True):
-        st.clear_cache()
-        st.unstore() if hasattr(st, "unstore") else None
         st.rerun()
 
 with col2:
