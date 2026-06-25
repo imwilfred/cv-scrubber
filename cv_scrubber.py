@@ -41,7 +41,7 @@ if uploaded_file is not None and uploaded_file.name.lower().endswith(".pdf"):
     if st.sidebar.button("🔮 Auto-Tune to Fit Layout", type="primary"):
         try:
             doc = fitz.open(stream=file_bytes, filetype="pdf")
-            page_dict = doc[0].get_text("dict")
+            page_dict = doc.get_text("dict")
             contact_boxes, profile_x0 = [], None
             for block in page_dict.get("blocks", []):
                 for line in block.get("lines", []):
@@ -81,6 +81,7 @@ def redact_pdf(file_bytes, layout_profile, w_barrier, h_ceiling, top_start, mask
             for line in block.get("lines", []):
                 for span in line.get("spans", []):
                     bbox = span["bbox"]
+                    # FIXED: Extract explicitly index 1 (y0 height marker) to evaluate numeric thresholds safely
                     if bbox[1] < 60 and not core_contact_check(span["text"]):
                         if span["text"].upper().strip() not in ["EDUCATION", "EXPERIENCE", "PROFILE"]:
                             for token in span["text"].lower().split(): protected_words.add(token.strip(":,.-_"))
@@ -93,11 +94,12 @@ def redact_pdf(file_bytes, layout_profile, w_barrier, h_ceiling, top_start, mask
                 if word in page_text.lower(): targets.add(word)
             for link in page.get_links():
                 link_from = link["from"]
+                # FIXED: Extract explicit coordinate vertical heights from link geometry maps
                 if link_from[1] < 130: page.add_redact_annot(fitz.Rect(link_from[0] - w_barrier, link_from[1] - 6, link_from[2] + 30, link_from[3] + h_ceiling), fill=mask_color)
             for target in targets:
                 for rect in page.search_for(target):
                     if rect.y0 > 130: continue
-                    is_p = any(w.lower().strip(":,.-_") in protected_words for w in page.get_text("words", clip=rect) if w.lower().strip(":,.-_") not in ["today", "cna", "hotmail"])
+                    is_p = any(w[4].lower().strip(":,.-_") in protected_words for w in page.get_text("words", clip=rect) if len(w) > 4 and w[4].lower().strip(":,.-_") not in ["today", "cna", "hotmail"])
                     if not is_p: page.add_redact_annot(fitz.Rect(rect.x0 - w_barrier, rect.y0 - 6, rect.x1 + 30, rect.y1 + h_ceiling), fill=mask_color)
             for s_rect in page.search_for("/"):
                 if s_rect.y0 < 130 and s_rect.x0 > 150: page.add_redact_annot(fitz.Rect(s_rect.x0 - 4, s_rect.y0 - 4, s_rect.x1 + 4, s_rect.y1 + 4), fill=mask_color)
@@ -109,7 +111,7 @@ def redact_pdf(file_bytes, layout_profile, w_barrier, h_ceiling, top_start, mask
                         if span["text"].upper().strip() in ["PROFILE", "EXPERIENCE", "EDUCATION"] and w_barrier == 220: main_col = float(span["bbox"][0])
             for block in page_dict.get("blocks", []):
                 bbox = block["bbox"]
-                if bbox[2] < main_col and top_start < bbox[1] < h_ceiling: page.add_redact_annot(fitz.Rect(0, max(bbox[1] - 4, top_start), main_col - 10, min(bbox[3] + 4, h_ceiling)), fill=mask_color)
+                if bbox[0] < main_col and top_start < bbox[1] < h_ceiling: page.add_redact_annot(fitz.Rect(0, max(bbox[1] - 4, top_start), main_col - 10, min(bbox[3] + 4, h_ceiling)), fill=mask_color)
         page.apply_redactions()
     output_buffer = io.BytesIO()
     doc.save(output_buffer, garbage=4, deflate=True)
