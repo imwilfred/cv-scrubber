@@ -74,7 +74,6 @@ def redact_pdf(file_bytes, layout_profile, width_barrier, height_ceiling):
                                 txt = span["text"].upper().strip()
                                 if txt in ["PROFILE", "PROFESSIONAL EXPERIENCE", "EXPERIENCE"]:
                                     if width_barrier == 220:
-                                        # FIXED: Extract ONLY the x0 coordinate (index 0) from the bbox tuple
                                         main_column_left = float(span["bbox"][0])
                                     break
             
@@ -95,7 +94,8 @@ def redact_pdf(file_bytes, layout_profile, width_barrier, height_ceiling):
 if uploaded_file is not None:
     file_bytes = uploaded_file.read()
     
-    col1, col2 = st.columns()
+    # FIXED: Added the required dimension argument '2' inside the function call
+    col1, col2 = st.columns(2)
     
     with col1:
         st.subheader("Control Actions")
@@ -122,4 +122,4 @@ if uploaded_file is not None:
                 if images:
                     st.image(images, caption="First Page Visual Map Preview (Adjust sliders to reposition white-out masks)", use_container_width=True)
             except Exception as img_err:
-                st.info("Visual preview rendering engine requires poppler to be installed on your terminal ecosystem.")
+                st.info("Visual preview rendering engine requires poppler to be installed on your cloud server.")
