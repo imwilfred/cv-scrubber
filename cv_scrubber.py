@@ -25,8 +25,8 @@ if layout_style != st.session_state.active_layout:
     else:
         st.session_state.top_boundary_val, st.session_state.h_limit_val, st.session_state.v_limit_val = 32, 310, 115
 
-# FIXED: Restricted to accept only "pdf" so the button label only displays "PDF"
-uploaded_file = st.file_uploader("Choose a PDF resume", type=["pdf"])
+# Allowed types updated to let Word files pass into our custom alert engine
+uploaded_file = st.file_uploader("Choose a resume file", type=["pdf", "docx", "doc"])
 
 if uploaded_file is not None:
     filename_lower = uploaded_file.name.lower()
