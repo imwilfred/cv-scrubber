@@ -249,7 +249,7 @@ if uploaded_file is not None:
             st.error(f"Error compiling document: {e}")
             scrubbed_pdf, total_pages, preview_page = None, 1, 1
 
-    with col2:
+     with col2:
         st.subheader("Live Document Preview")
         if scrubbed_pdf:
             try:
@@ -260,4 +260,10 @@ if uploaded_file is not None:
                 )
                 if images:
                     st.image(
-                        images,
+                        images[0], 
+                        caption=f"Page {preview_page} of {total_pages}", 
+                        use_container_width=False,
+                        width=zoom_level
+                    )
+            except Exception as img_err:
+                st.error(f"Visual preview rendering error: {img_err}")
