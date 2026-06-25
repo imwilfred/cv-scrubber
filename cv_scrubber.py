@@ -19,13 +19,7 @@ if layout_style != st.session_state.active_layout:
     if "Two-Column" in layout_style: st.session_state.top_boundary_val, st.session_state.h_limit_val, st.session_state.v_limit_val = 88, 220, 260
     else: st.session_state.top_boundary_val, st.session_state.h_limit_val, st.session_state.v_limit_val = 32, 310, 115
 
-# --- CLEAN PYTHON LAYOUT BLOCK ---
-st.markdown("Upload the PDF Resume")
-
-# label_visibility="hidden" completely deletes the automatic header and the extra text from your page layout
-uploaded_file = st.file_uploader("Upload", type=["pdf", "docx", "doc"], label_visibility="hidden")
-
-st.caption("200MB per file")
+uploaded_file = st.file_uploader("Upload the PDF Resume", type=["pdf", "docx", "doc"])
 
 if uploaded_file is not None and uploaded_file.name.lower().endswith((".docx", ".doc")):
     st.error("⚠️ Invalid File Type Detected!")
