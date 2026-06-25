@@ -6,17 +6,19 @@ st.set_page_config(page_title="PDF CV Scrubber", layout="wide")
 st.title("Interactive PDF CV Contact Scrubber")
 st.write("Upload your resume and use Auto-Tune or manual sliders.")
 
-# --- CSS FIX: Forces the subcaption to display exactly "200MB" ---
+# --- THE ABSOLUTE CSS FIX: Hard-locks the internal text block to "200MB per file" ---
 st.markdown(
     """
     <style>
-    div[data-testid="stFileUploaderSubcaption"] {
+    /* Direct child span target structure overrides Streamlit layout priorities */
+    div[data-testid="stFileUploaderSubcaption"] > span {
         font-size: 0 !important;
     }
-    div[data-testid="stFileUploaderSubcaption"]::after {
-        content: "200MB";
+    div[data-testid="stFileUploaderSubcaption"] > span::after {
+        content: "200MB per file";
         font-size: 14px !important;
         color: #808495;
+        visibility: visible;
     }
     </style>
     """,
@@ -42,7 +44,6 @@ if layout_style != st.session_state.active_layout:
     else:
         st.session_state.top_boundary_val, st.session_state.h_limit_val, st.session_state.v_limit_val = 32, 310, 115
 
-# CHANGED: Title text updated to "Upload the PDF Resume"
 uploaded_file = st.file_uploader("Upload the PDF Resume", type=["pdf", "docx", "doc"])
 
 if uploaded_file is not None:
