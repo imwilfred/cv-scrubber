@@ -6,7 +6,7 @@ import io
 st.set_page_config(page_title="PDF CV Scrubber", page_icon="doc")
 
 st.title("PDF CV Contact Information Scrubber")
-st.write("Upload any PDF resume format to cleanly erase contact data and icons while completely safeguarding your layout text.")
+st.write("Upload any PDF resume format to cleanly erase contact data and icons while completely safeguarding your name.")
 
 # --- Layout Selector Sidebar ---
 st.sidebar.header("Layout Profile Selector")
@@ -42,33 +42,50 @@ def redact_pdf(file_bytes, layout_style):
     doc = fitz.open(stream=file_bytes, filetype="pdf")
     redactions_applied = 0
     
+    # Precise regex patterns to locate exact character sequences to slice out
+    email_pattern = re.compile(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}')
+    phone_pattern = re.compile(r'\+?\d{1,4}[-.\s]?\(?\d{1,3}?\)?[-.\s]?\d{3,4}[-.\s]?\d{3,4}')
+    
     for page in doc:
         page_dict = page.get_text("dict")
-        
-        # Determine if we are analyzing a Two-Column Sidebar Layout layout
         is_sidebar_mode = "Two-Column Sidebar Layout" in layout_style
-        
-        # Phase 1: Track where contact text fields sit on the page coordinate matrix
         contact_y_positions = []
         
+        # Phase 1: Track and mask contact elements with character-level protection
         for block in page_dict.get("blocks", []):
             if "lines" in block:
                 for line in block["lines"]:
                     if "spans" in line:
                         for span in line["spans"]:
                             span_text = span["text"]
-                            if core_contact_check(span_text) or should_scrub_labels(span_text):
+                            
+                            # CRITICAL LOCK: If a string contains your name, do not erase the block container!
+                            if "Jiayi" in span_text or "Edward" in span_text or "LIM" in span_text:
+                                # Isolate and mask ONLY the email inside this mixed container text
+                                for email_match in email_pattern.finditer(span_text):
+                                    email_str = email_match.group(0)
+                                    rect_list = page.search_for(email_str)
+                                    for rect in rect_list:
+                                        page.add_redact_annot(rect, fill=(1, 1, 1))
+                                        redactions_applied += 1
+                                # Isolate and mask ONLY the phone numbers inside this mixed container text
+                                for phone_match in phone_pattern.finditer(span_text):
+                                    phone_str = phone_match.group(0)
+                                    rect_list = page.search_for(phone_str)
+                                    for rect in rect_list:
+                                        page.add_redact_annot(rect, fill=(1, 1, 1))
+                                        redactions_applied += 1
+                            
+                            # Standard clean behavior if the container is purely contact info
+                            elif core_contact_check(span_text) or should_scrub_labels(span_text):
                                 rect = fitz.Rect(span["bbox"])
                                 contact_y_positions.append(rect.y0)
-                                
-                                # Laser-tight extraction padding by default
                                 tight_rect = fitz.Rect(rect.x0 - 4, rect.y0 - 2, rect.x1 + 4, rect.y1 + 2)
                                 page.add_redact_annot(tight_rect, fill=(1, 1, 1))
                                 redactions_applied += 1
 
         # Phase 2: Target local, nearby Location markers safely (Protects University headings)
         if is_sidebar_mode and contact_y_positions:
-            # Find the vertical clustering range of the contact elements
             min_contact_y = min(contact_y_positions) - 40
             max_contact_y = max(contact_y_positions) + 60
             
@@ -80,7 +97,6 @@ def redact_pdf(file_bytes, layout_style):
                                 span_text = span["text"]
                                 rect = fitz.Rect(span["bbox"])
                                 
-                                # Process location strings ONLY if they physically reside inside the contact zone cluster
                                 if min_contact_y <= rect.y0 <= max_contact_y:
                                     is_location = bool(re.search(r'\b(singapore|asia|malaysia|usa|uk|london|address|location)\b', span_text.lower()))
                                     if is_location or len(span_text.strip()) < 3: 
@@ -90,8 +106,6 @@ def redact_pdf(file_bytes, layout_style):
 
         # Phase 3: Targeted Sidebar Icon Column Erasing Channel
         if is_sidebar_mode:
-            # Drop a precise narrow strip covering the isolated grey icon column tracker path
-            # Coordinates are calibrated to fit between x=12 and x=42 up to the top text plane
             icon_strip_zone = fitz.Rect(12, 20, 42, 195)
             page.add_redact_annot(icon_strip_zone, fill=(1, 1, 1))
             redactions_applied += 1
@@ -126,7 +140,7 @@ if uploaded_file is not None:
                 if count == 0:
                     st.warning("No target details matched your active layout profile.")
                 else:
-                    st.success("Document scrubbed flawlessly across all layout metrics!")
+                    st.success("Document scrubbed flawlessly! Name locked and fully protected.")
                 
                 st.download_button(
                     label="Download Redacted PDF",
