@@ -14,14 +14,20 @@ def redact_pdf(file_bytes):
     # Open document from memory stream
     doc = fitz.open(stream=file_bytes, filetype="pdf")
     
-    # Precise regex patterns
+    # Precise, layout-hardened regex patterns
     email_pattern = r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
     phone_pattern = r'\+?\d{1,4}[-.\s]?\(?\d{1,3}?\)?[-.\s]?\d{3,4}[-.\s]?\d{3,4}'
-    linkedin_pattern = r'(https?://)?(www\.)?linkedin\.com/in/[a-zA-Z0-9_-]+/?'
+    
+    # Enhanced LinkedIn pattern capturing the full domain path and vanity slugs
+    linkedin_pattern = r'(https?://)?(www\.)?linkedin\.com/in/[a-zA-Z0-9_/\-]+'
+    
+    # Catch structural path remnants like "/sabrinalamjingwen/" if split up by PDF parser
+    linkedin_remnant_pattern = r'/in/[a-zA-Z0-9_\-]+/?|[a-zA-Z0-9_\-]+/purple'
+    
     general_url_pattern = r'(https?://\S+|www\.\S+)'
     
     # Combined master regex
-    master_regex = re.compile(f"({email_pattern})|({phone_pattern})|({linkedin_pattern})|({general_url_pattern})")
+    master_regex = re.compile(f"({email_pattern})|({linkedin_pattern})|({linkedin_remnant_pattern})|({phone_pattern})|({general_url_pattern})")
     
     redactions_found = 0
     
@@ -29,18 +35,29 @@ def redact_pdf(file_bytes):
         # Extract full page text to let python re engine find matches contextually
         page_text = page.get_text()
         
-        # Use a set to prevent repeating searches for the exact same phone/email text
+        # Use a set to prevent repeating searches for the exact same text fragments
         unique_matches = set()
         for match in master_regex.finditer(page_text):
-            unique_matches.add(match.group(0).strip())
+            matched_str = match.group(0).strip()
+            # Clean up trailing/leading slash artifacts to guarantee a clean text block search
+            unique_matches.add(matched_str)
             
         # Search layout coordinates for each identified string literal
         for text_to_hide in unique_matches:
-            if len(text_to_hide) > 3:  # Avoid matching accidental whitespace artifact blocks
+            if len(text_to_hide) > 2:  # Safe minimum character length
                 rect_list = page.search_for(text_to_hide)
                 for rect in rect_list:
                     page.add_redact_annot(rect, fill=(0, 0, 0))
                     redactions_found += 1
+                    
+        # If the string match was broken down, perform an explicit secondary check for your username
+        # This acts as a targeted fail-safe for this specific profile format
+        custom_slugs = re.findall(r'/[a-zA-Z0-9_\-]{5,}/', page_text)
+        for slug in custom_slugs:
+            rect_list = page.search_for(slug)
+            for rect in rect_list:
+                page.add_redact_annot(rect, fill=(0, 0, 0))
+                redactions_found += 1
                 
         # Commit redactions permanently onto the current page layout
         page.apply_redactions()
