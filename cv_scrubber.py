@@ -6,22 +6,14 @@ st.set_page_config(page_title="PDF CV Scrubber", layout="wide")
 st.title("Interactive PDF CV Contact Scrubber")
 st.write("Upload your resume and use Auto-Tune or manual sliders.")
 
-# --- PRECISION CSS FIX: Target ONLY the subcaption text layer cleanly ---
-st.markdown(
-    """
-    <style>
-    /* Surgically target the exact small caption text container node */
-    div[data-testid="stFileUploader"] p + div div small {
-        font-size: 0 !important;
-        line-height: 0 !important;
-        color: transparent !important;
-        display: none !important;
-        visibility: hidden !important;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
+# --- THE ABSOLUTE CSS FIX: Hard-locks the internal text block to vanish completely ---
+st.markdown("""
+<style>
+div[data-testid="stFileUploaderSubcaption"] { display: none !important; height: 0 !important; visibility: hidden !important; }
+div[data-testid="stFileUploaderSubcaption"] * { display: none !important; visibility: hidden !important; }
+div[data-testid="stFileUploader"] button span { font-size: 14px !important; visibility: visible !important; }
+</style>
+""", unsafe_allow_html=True)
 
 if "top_boundary_val" not in st.session_state: st.session_state.top_boundary_val = 88
 if "h_limit_val" not in st.session_state: st.session_state.h_limit_val = 220
@@ -29,42 +21,26 @@ if "v_limit_val" not in st.session_state: st.session_state.v_limit_val = 260
 if "active_layout" not in st.session_state: st.session_state.active_layout = "Standard Layout"
 
 st.sidebar.header("Layout Settings")
-layout_style = st.sidebar.selectbox(
-    "Select your CV's layout style:",
-    options=["Standard Layout", "Two-Column Sidebar Layout"],
-    key="layout_style_selection"
-)
+layout_style = st.sidebar.selectbox("Select layout style:", options=["Standard Layout", "Two-Column Sidebar Layout"], key="layout_style_selection")
 
 if layout_style != st.session_state.active_layout:
     st.session_state.active_layout = layout_style
-    if "Two-Column" in layout_style:
-        st.session_state.top_boundary_val, st.session_state.h_limit_val, st.session_state.v_limit_val = 88, 220, 260
-    else:
-        st.session_state.top_boundary_val, st.session_state.h_limit_val, st.session_state.v_limit_val = 32, 310, 115
+    if "Two-Column" in layout_style: st.session_state.top_boundary_val, st.session_state.h_limit_val, st.session_state.v_limit_val = 88, 220, 260
+    else: st.session_state.top_boundary_val, st.session_state.h_limit_val, st.session_state.v_limit_val = 32, 310, 115
 
-uploaded_file = st.file_uploader("Upload the PDF Resume", type=["pdf", "docx", "doc"])
+st.markdown("Upload the PDF Resume")
+with st.container():
+    uploaded_file = st.file_uploader("Upload", type=["pdf", "docx", "doc"], label_visibility="collapsed")
+    st.caption("200MB per file")
 
-# --- CLEAN USER INTERFACE LABEL ---
-st.caption("200MB per file")
-
-if uploaded_file is not None:
-    filename_lower = uploaded_file.name.lower()
-    if filename_lower.endswith((".docx", ".doc")):
-        st.error("⚠️ Invalid File Type Detected!")
-        msg = "Our CV Scrubber can only process **PDF files**.\n\n"
-        msg += "**How to convert your Word document:**\n"
-        msg += "1. Open your document in Microsoft Word.\n"
-        msg += "2. Click **File** -> **Save As** (or **Export**).\n"
-        msg += "3. Select **PDF (*.pdf)** from the file format list.\n"
-        msg += "4. Upload your new PDF file here."
-        st.markdown(msg)
-        st.stop()
+if uploaded_file is not None and uploaded_file.name.lower().endswith((".docx", ".doc")):
+    st.error("⚠️ Invalid File Type Detected!")
+    st.markdown("Our CV Scrubber can only process **PDF files**.\n\n**How to convert your Word document:**\n1. Open file in Word.\n2. Click **File** -> **Save As**.\n3. Select **PDF (*.pdf)** from format list.\n4. Upload new PDF here.")
+    st.stop()
 
 def core_contact_check(text):
     text_lower = text.lower().strip()
-    has_e = bool(re.search(r'[\w\.-]+@[\w\.-]+\.\w+', text))
-    has_p = bool(re.search(r'\+?\d{1,4}[-.\s]?\(?\d{1,3}?\)?[-.\s]?\d{3,4}', text))
-    return has_e or has_p or "linkedin.com" in text_lower or "/in/" in text_lower or "www." in text_lower
+    return bool(re.search(r'[\w\.-]+@[\w\.-]+\.\w+', text)) or bool(re.search(r'\+?\d{1,4}[-.\s]?\(?\d{1,3}?\)?[-.\s]?\d{3,4}', text)) or "linkedin.com" in text_lower or "/in/" in text_lower or "www." in text_lower
 
 if uploaded_file is not None and uploaded_file.name.lower().endswith(".pdf"):
     file_bytes = uploaded_file.read()
@@ -74,12 +50,11 @@ if uploaded_file is not None and uploaded_file.name.lower().endswith(".pdf"):
             page_dict = doc.get_text("dict")
             contact_boxes, profile_x0 = [], None
             for block in page_dict.get("blocks", []):
-                if "lines" in block:
-                    for line in block["lines"]:
-                        for span in line.get("spans", []):
-                            txt = span["text"].upper().strip()
-                            if core_contact_check(span["text"]): contact_boxes.append(fitz.Rect(span["bbox"]))
-                            if txt in ["PROFILE", "EXPERIENCE"]: profile_x0 = span["bbox"]
+                for line in block.get("lines", []):
+                    for span in line.get("spans", []):
+                        txt = span["text"].upper().strip()
+                        if core_contact_check(span["text"]): contact_boxes.append(fitz.Rect(span["bbox"]))
+                        if txt in ["PROFILE", "EXPERIENCE"]: profile_x0 = span["bbox"]
             if "Two-Column" in layout_style:
                 st.session_state.top_boundary_val = 85
                 st.session_state.h_limit_val = int(profile_x0) if profile_x0 else 220
@@ -90,8 +65,7 @@ if uploaded_file is not None and uploaded_file.name.lower().endswith(".pdf"):
                 st.session_state.v_limit_val = int(max([r.y1 for r in contact_boxes])) + 5 if contact_boxes else 115
             doc.close()
             st.sidebar.success("Auto-tuned successfully!")
-        except Exception as tune_err:
-            st.sidebar.error(f"Auto-tune failed: {tune_err}")
+        except Exception as e: st.sidebar.error(f"Auto-tune failed: {e}")
 
 st.sidebar.markdown("---")
 st.sidebar.header("Live Mask Adjustment")
@@ -120,20 +94,16 @@ def redact_pdf(file_bytes, layout_profile, w_barrier, h_ceiling, top_start):
             for p in re.findall(r'\+?\d{1,4}[-.\s]?\(?\d{1,3}?\)?[-.\s]?\d{3,4}', page_text):
                 if len(p.strip()) > 6: targets.add(p.strip())
             for target in targets:
-                for rect in page.search_for(target):
-                    page.add_redact_annot(fitz.Rect(rect.x0 - 2, rect.y0 - 1, rect.x1 + 2, rect.y1 + 1), fill=(1, 1, 1))
+                for rect in page.search_for(target): page.add_redact_annot(fitz.Rect(rect.x0 - 2, rect.y0 - 1, rect.x1 + 2, rect.y1 + 1), fill=(1, 1, 1))
         else:
             main_column_left = float(w_barrier)
             for block in page_dict.get("blocks", []):
-                if "lines" in block:
-                    for line in block["lines"]:
-                        for span in line.get("spans", []):
-                            if span["text"].upper().strip() in ["PROFILE", "EXPERIENCE"]:
-                                if w_barrier == 220: main_column_left = float(span["bbox"])
+                for line in block.get("lines", []):
+                    for span in line.get("spans", []):
+                        if span["text"].upper().strip() in ["PROFILE", "EXPERIENCE"] and w_barrier == 220: main_column_left = float(span["bbox"])
             for block in page_dict.get("blocks", []):
                 bx0, by0, bx1, by1 = block["bbox"]
-                if bx1 < main_column_left and top_start < by0 < h_ceiling:
-                    page.add_redact_annot(fitz.Rect(0, max(by0 - 4, top_start), main_column_left - 10, min(by1 + 4, h_ceiling)), fill=(1, 1, 1))
+                if bx1 < main_column_left and top_start < by0 < h_ceiling: page.add_redact_annot(fitz.Rect(0, max(by0 - 4, top_start), main_column_left - 10, min(by1 + 4, h_ceiling)), fill=(1, 1, 1))
         page.apply_redactions()
     output_buffer = io.BytesIO()
     doc.save(output_buffer, garbage=4, deflate=True)
@@ -142,10 +112,9 @@ def redact_pdf(file_bytes, layout_profile, w_barrier, h_ceiling, top_start):
     return output_buffer.getvalue(), total_pages
 
 if uploaded_file is not None and uploaded_file.name.lower().endswith(".pdf"):
-    base_name = uploaded_file.name[:-4] if uploaded_file.name.lower().endswith(".pdf") else uploaded_file.name
+    base_name = uploaded_file.name[:-4]
     output_filename = f"{base_name}_Redacted.pdf"
     col1, col2 = st.columns(2)
-    
     with col1:
         st.subheader("Control Actions")
         try:
@@ -153,15 +122,11 @@ if uploaded_file is not None and uploaded_file.name.lower().endswith(".pdf"):
             st.success("Calculated successfully!")
             st.download_button(label="Download Redacted PDF", data=scrubbed_pdf, file_name=output_filename, mime="application/pdf", type="primary")
             preview_page = st.selectbox("Flip Preview Page:", options=list(range(1, total_pages + 1)), index=0) if total_pages > 1 else 1
-        except Exception as e:
-            st.error(f"Error compiling document: {e}")
-            scrubbed_pdf, total_pages, preview_page = None, 1, 1
-
+        except Exception as e: st.error(f"Error compiling document: {e}"); scrubbed_pdf, total_pages, preview_page = None, 1, 1
     with col2:
         st.subheader("Live Document Preview")
         if scrubbed_pdf:
             try:
                 images = convert_from_bytes(scrubbed_pdf, first_page=preview_page, last_page=preview_page)
                 if images: st.image(images, caption=f"Page {preview_page} of {total_pages}", width=zoom_level)
-            except Exception as img_err:
-                st.error(f"Visual preview error: {img_err}")
+            except Exception as img_err: st.error(f"Visual preview error: {img_err}")
