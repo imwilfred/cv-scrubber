@@ -7,7 +7,7 @@ from pdf2image import convert_from_bytes
 st.set_page_config(page_title="PDF CV Scrubber", page_icon="doc", layout="wide")
 
 st.title("Interactive PDF CV Contact Scrubber")
-st.write("Upload your resume and use Auto-Tune or manual sliders to frame your layout perfectly.")
+st.write("Upload your resume and use Auto-Tune or manual sliders to frame your layout perfectly across multiple pages.")
 
 # Initialize session state variables to track slider overrides dynamically
 if "top_boundary_val" not in st.session_state: st.session_state.top_boundary_val = 88
@@ -51,16 +51,13 @@ def core_contact_check(text):
 if uploaded_file is not None:
     if st.sidebar.button("🔮 Auto-Tune to Fit Layout", type="primary", use_container_width=True):
         try:
-            # Read bytes non-destructively to parse alignment matrices
             doc = fitz.open(stream=uploaded_file.getvalue(), filetype="pdf")
-            first_page = doc[0]
+            first_page = doc[0]  # Tune parameters based on the primary header page structure
             page_dict = first_page.get_text("dict")
-            page_width = first_page.rect.width
             
             contact_boxes = []
             profile_x0 = None
             
-            # Map where contact anchors and main headers live
             for block in page_dict.get("blocks", []):
                 if "lines" in block:
                     for line in block["lines"]:
@@ -73,7 +70,6 @@ if uploaded_file is not None:
                                     profile_x0 = span["bbox"][0]
 
             if "Two-Column" in layout_style:
-                # Two-Column Tuning Parameters
                 st.session_state.top_boundary_val = 85
                 st.session_state.h_limit_val = int(profile_x0) if profile_x0 else 220
                 if contact_boxes:
@@ -81,10 +77,8 @@ if uploaded_file is not None:
                 else:
                     st.session_state.v_limit_val = 260
             else:
-                # Standard Layout Tuning Parameters
                 st.session_state.top_boundary_val = 32
                 if contact_boxes:
-                    # Dynamically set width barrier right before the leftmost contact string element starts
                     st.session_state.h_limit_val = int(min([r.x0 for r in contact_boxes])) - 15
                     st.session_state.v_limit_val = int(max([r.y1 for r in contact_boxes])) + 5
                 else:
@@ -96,7 +90,7 @@ if uploaded_file is not None:
         except Exception as tune_err:
             st.sidebar.error(f"Auto-tune parsing failed: {tune_err}")
 
-# --- Render Sliders Linked to Session State Management Matrix ---
+# --- Render Sliders ---
 st.sidebar.markdown("---")
 st.sidebar.header("Live Mask Adjustment")
 
@@ -131,15 +125,19 @@ st.session_state.v_limit_val = v_limit
 # --- Processing Pipeline Functions ---
 def redact_pdf(file_bytes, layout_profile, width_barrier, height_ceiling, top_start):
     doc = fitz.open(stream=file_bytes, filetype="pdf")
+    
+    # MODIFIED: Loops dynamically through every page of the uploaded PDF structure
     for page in doc:
         page_text = page.get_text()
         page_dict = page.get_text("dict")
         page_width = page.rect.width
         
         if "Standard Layout" in layout_profile:
+            # Apply header quadrant mask
             right_mask = fitz.Rect(width_barrier, top_start, page_width - 15, height_ceiling)
             page.add_redact_annot(right_mask, fill=(1, 1, 1))
             
+            # Global text regex search across all page body levels
             targets = set()
             emails = re.findall(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', page_text)
             for e in emails: targets.add(e.strip())
@@ -181,13 +179,19 @@ def redact_pdf(file_bytes, layout_profile, width_barrier, height_ceiling, top_st
 # --- Page Layout Rendering Matrix ---
 if uploaded_file is not None:
     file_bytes = uploaded_file.read()
+    
+    # Pre-calculate total document pages for layout controls
+    temp_doc = fitz.open(stream=file_bytes, filetype="pdf")
+    total_pages = len(temp_doc)
+    temp_doc.close()
+    
     col1, col2 = st.columns(2)
     
     with col1:
         st.subheader("Control Actions")
         try:
             scrubbed_pdf = redact_pdf(file_bytes, layout_style, h_limit, v_limit, top_boundary)
-            st.success("Layout masks calculated successfully! Check preview on the right.")
+            st.success("Layout masks calculated successfully across all pages!")
             
             st.download_button(
                 label="📥 Download Redacted PDF",
@@ -203,9 +207,20 @@ if uploaded_file is not None:
     with col2:
         st.subheader("Live Document Preview")
         if scrubbed_pdf:
+            # MODIFIED: Renders interactive page picker layout only if document is multi-page
+            if total_pages > 1:
+                preview_page = st.number_input(
+                    f"View Page (1 to {total_pages})", 
+                    min_value=1, 
+                    max_value=total_pages, 
+                    value=1, 
+                    step=1
+                )
+            else:
+                preview_page = 1
+                
             try:
-                images = convert_from_bytes(scrubbed_pdf, first_page=1, last_page=1)
+                # Convert only the user-selected preview page into a display image matrix instantly
+                images = convert_from_bytes(scrubbed_pdf, first_page=preview_page, last_page=preview_page)
                 if images:
-                    st.image(images, caption="Live Layout Map Preview", use_container_width=True)
-            except Exception as img_err:
-                st.info("Visual preview rendering engine configuration error.")
+                    st.image(images, caption=f"Visual Preview - Page {preview_page} of {total_pages}", use_container_width=True)
