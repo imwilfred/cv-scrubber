@@ -28,7 +28,6 @@ if uploaded_file is not None and uploaded_file.name.lower().endswith((".docx", "
 
 def core_contact_check(text):
     text_lower = text.lower().strip()
-    # Expanded regex rules to capture raw external link references and profile domains cleanly
     return (bool(re.search(r'[\w\.-]+@[\w\.-]+\.\w+', text)) or 
             bool(re.search(r'\+?\d{1,4}[-.\s]?\(?\d{1,3}?\)?[-.\s]?\d{3,4}', text)) or 
             "linkedin.com" in text_lower or "/in/" in text_lower or "www." in text_lower or 
@@ -51,7 +50,7 @@ if uploaded_file is not None and uploaded_file.name.lower().endswith(".pdf"):
                         if txt in ["PROFILE", "EXPERIENCE"]: profile_x0 = span["bbox"]
             if "Two-Column" in layout_style:
                 st.session_state.top_boundary_val = 85
-                st.session_state.h_limit_val = int(profile_x0) if profile_x0 else 220
+                st.session_state.h_limit_val = int(profile_x0[0]) if profile_x0 else 220
                 st.session_state.v_limit_val = int(max([r.y1 for r in contact_boxes])) + 15 if contact_boxes else 260
             else:
                 st.session_state.top_boundary_val = 0
@@ -90,7 +89,6 @@ def redact_pdf(file_bytes, layout_profile, w_barrier, h_ceiling, top_start):
             for word in ["mobile:", "email:", "phone:", "website:", "linkedin:", "hotmail", "yahoo", "outlook", "today", "cna"]:
                 if word in page_text.lower(): targets.add(word)
                 
-            # FIXED Pass: Scrape active interactive link layers sitting in the top header segment
             for link in page.get_links():
                 l_rect = fitz.Rect(link["from"])
                 if l_rect.y0 < 150:
@@ -109,7 +107,10 @@ def redact_pdf(file_bytes, layout_profile, w_barrier, h_ceiling, top_start):
             for block in page_dict.get("blocks", []):
                 for line in block.get("lines", []):
                     for span in line.get("spans", []):
-                        if span["text"].upper().strip() in ["PROFILE", "EXPERIENCE"] and w_barrier == 220: main_column_left = float(span["bbox"])
+                        if span["text"].upper().strip() in ["PROFILE", "EXPERIENCE"]:
+                            # FIXED: Extract ONLY x0 boundary element to satisfy float restrictions
+                            main_column_left = float(span["bbox"][0])
+                            break
             for block in page_dict.get("blocks", []):
                 bx0, by0, bx1, by1 = block["bbox"]
                 if bx1 < main_column_left and top_start < by0 < h_ceiling: page.add_redact_annot(fitz.Rect(0, max(by0 - 4, top_start), main_column_left - 10, min(by1 + 4, h_ceiling)), fill=(1, 1, 1))
