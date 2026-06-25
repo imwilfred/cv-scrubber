@@ -28,7 +28,7 @@ def redact_pdf(file_bytes, layout_profile):
         page_dict = page.get_text("dict")
         
         if "Standard Layout" in layout_profile:
-            # --- STRATEGY 1: LASER SUBSTRING SEARCH (Protects Right-Aligned Names) ---
+            # --- STRATEGY 1: LASER SUBSTRING SEARCH (KEEPING EXACTLY AS IS - WORKING PERFECTLY) ---
             targets = set()
             
             # Find structural emails
@@ -63,8 +63,8 @@ def redact_pdf(file_bytes, layout_profile):
                     redactions_applied += 1
                     
         else:
-            # --- STRATEGY 2: DYNAMIC SIDEBAR BOUNDARY WALL (Protects Column Text) ---
-            # Automatically find the exact coordinate where the main column starts
+            # --- STRATEGY 2: VERTICALLY CONSTRAINED SIDEBAR PROTECTION ---
+            # Automatically find the exact coordinate where the main column starts to protect "PROFILE"
             main_column_left = 220  # Safe default fallback
             
             for block in page_dict.get("blocks", []):
@@ -77,14 +77,14 @@ def redact_pdf(file_bytes, layout_profile):
                                     main_column_left = span["bbox"][0]
                                     break
             
-            # White out all content containers on the left side of the calculated wall boundary
+            # White out ONLY the contact container area at the top left of the sidebar
             for block in page_dict.get("blocks", []):
                 bx0, by0, bx1, by1 = block["bbox"]
                 
-                # If the block belongs to the sidebar zone below the top header title area
-                if bx1 < main_column_left and by0 > 70:
-                    # Extend mask to the far left edge to swallow icons, but lock it before the text wall
-                    sidebar_mask = fitz.Rect(0, by0 - 4, main_column_left - 10, by1 + 4)
+                # Enforce a strict vertical height floor (by0 < 260) so it never touches Awards or Skills sections
+                if bx1 < main_column_left and 70 < by0 < 260:
+                    # Clear out the full width up to the main text column, covering the whole "CONTACT" word and icons cleanly
+                    sidebar_mask = fitz.Rect(0, by0 - 4, main_column_left - 10, min(by1 + 4, 260))
                     page.add_redact_annot(sidebar_mask, fill=(1, 1, 1))
                     redactions_applied += 1
                     
@@ -110,7 +110,7 @@ if uploaded_file is not None:
                 if count == 0:
                     st.warning("No target details matched your active layout profile.")
                 else:
-                    st.success("Document scrubbed cleanly! Layout integrity preserved.")
+                    st.success("Document scrubbed cleanly! All structural components preserved.")
                 
                 st.download_button(
                     label="Download Redacted PDF",
