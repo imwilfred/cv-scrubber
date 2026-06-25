@@ -31,16 +31,15 @@ def core_contact_check(text):
     return (bool(re.search(r'[\w\.-]+@[\w\.-]+\.\w+', text)) or 
             bool(re.search(r'\+?\d{1,4}[-.\s]?\(?\d{1,3}?\)?[-.\s]?\d{3,4}', text)) or 
             "linkedin.com" in text_lower or "/in/" in text_lower or "www." in text_lower or 
-            "http" in text_lower or "hotmail" in text_lower or "yahoo" in text_lower or 
-            "outlook" in text_lower)
+            "http" in text_lower or "@hotmail" in text_lower or "@yahoo" in text_lower or 
+            "@outlook" in text_lower)
 
 if uploaded_file is not None and uploaded_file.name.lower().endswith(".pdf"):
     file_bytes = uploaded_file.read()
     if st.sidebar.button("🔮 Auto-Tune to Fit Layout", type="primary"):
         try:
             doc = fitz.open(stream=file_bytes, filetype="pdf")
-            first_page = doc[0]
-            # FIXED: Read text coordinates directly from the page layout matrix
+            first_page = doc
             page_dict = first_page.get_text("dict")
             contact_boxes, profile_x0 = [], None
             for block in page_dict.get("blocks", []):
@@ -51,7 +50,7 @@ if uploaded_file is not None and uploaded_file.name.lower().endswith(".pdf"):
                         if txt in ["PROFILE", "EXPERIENCE"]: profile_x0 = span["bbox"]
             if "Two-Column" in layout_style:
                 st.session_state.top_boundary_val = 85
-                st.session_state.h_limit_val = int(profile_x0[0]) if profile_x0 else 220
+                st.session_state.h_limit_val = int(profile_x0) if profile_x0 else 220
                 st.session_state.v_limit_val = int(max([r.y1 for r in contact_boxes])) + 15 if contact_boxes else 260
             else:
                 st.session_state.top_boundary_val = 0
@@ -82,6 +81,16 @@ def redact_pdf(file_bytes, layout_profile, w_barrier, h_ceiling, top_start):
     for page in doc:
         page_text, page_dict = page.get_text(), page.get_text("dict")
         
+        # 🛡️ PASS 1: AUTOMATICALLY EXTRACT AND REGISTER EXCLUDED USERNAME TOKENS
+        protected_words = set()
+        first_block = page_dict.get("blocks", [])[0] if page_dict.get("blocks", []) else {}
+        for line in first_block.get("lines", []):
+            for span in line.get("spans", []):
+                # Grabs the first raw text line (usually your name) and registers the token fragments safely
+                if not core_contact_check(span["text"]) and len(span["text"].strip()) > 1:
+                    for token in span["text"].lower().split():
+                        protected_words.add(token.strip(":,.-_"))
+
         if "Standard Layout" in layout_profile:
             targets = set()
             for e in re.findall(r'[\w\.-]+@[\w\.-]+\.\w+', page_text): targets.add(e.strip())
@@ -97,6 +106,17 @@ def redact_pdf(file_bytes, layout_profile, w_barrier, h_ceiling, top_start):
 
             for target in targets:
                 for rect in page.search_for(target):
+                    # 🛡️ GUARD RAIL PASS: Verify if the selected match coordinate text touches any registered name words
+                    intersecting_spans = page.get_text("words", clip=rect)
+                    is_protected = False
+                    for w_item in intersecting_spans:
+                        w_text_clean = w_item[4].lower().strip(":,.-_")
+                        if w_text_clean in protected_words and w_text_clean not in ["today", "cna", "hotmail"]:
+                            is_protected = True
+                    
+                    if is_protected:
+                        continue # Safely skips drawing the white mask over your personal name tokens
+                        
                     icon_eating_rect = fitz.Rect(rect.x0 - w_barrier, rect.y0 - 6, rect.x1 + 30, rect.y1 + h_ceiling)
                     page.add_redact_annot(icon_eating_rect, fill=(1, 1, 1))
             
@@ -122,6 +142,7 @@ def redact_pdf(file_bytes, layout_profile, w_barrier, h_ceiling, top_start):
     return output_buffer.getvalue(), total_pages
 
 if uploaded_file is not None and uploaded_file.name.lower().endswith(".pdf"):
+    file_bytes = uploaded_file.read()
     base_name = uploaded_file.name[:-4]
     output_filename = f"{base_name}_Redacted.pdf"
     col1, col2 = st.columns(2)
