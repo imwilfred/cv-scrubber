@@ -23,7 +23,7 @@ uploaded_file = st.file_uploader("Upload the PDF Resume", type=["pdf", "docx", "
 
 if uploaded_file is not None and uploaded_file.name.lower().endswith((".docx", ".doc")):
     st.error("⚠️ Invalid File Type Detected!")
-    st.markdown("Our CV Scrubber can only process **PDF files**.\n\n**How to convert your Word document:**\n1. Open file in Word.\n2. Click **File** -> **Save As**.\n3. Select **PDF (*.pdf)** from format list.\n4. Upload new PDF file here.")
+    st.markdown("Our CV Scrubber can only process **PDF files**.\n\n**How to convert your Word document:**\n1. Open file in Word.\n2. Click **File** -> **Save As**.\n3. Select **PDF (*.pdf)** from format list.\n4. Upload new PDF here.")
     st.stop()
 
 def core_contact_check(text):
@@ -35,7 +35,6 @@ def core_contact_check(text):
             "@outlook" in text_lower)
 
 if uploaded_file is not None and uploaded_file.name.lower().endswith(".pdf"):
-    # Read the data and reset the position indicator to avoid empty streams
     file_bytes = uploaded_file.read()
     uploaded_file.seek(0)
     
@@ -50,7 +49,7 @@ if uploaded_file is not None and uploaded_file.name.lower().endswith(".pdf"):
                     for span in line.get("spans", []):
                         txt = span["text"].upper().strip()
                         if core_contact_check(span["text"]): contact_boxes.append(fitz.Rect(span["bbox"]))
-                        if txt in ["PROFILE", "EXPERIENCE"]: profile_x0 = span["bbox"]
+                        if txt in ["PROFILE", "EXPERIENCE", "EDUCATION"]: profile_x0 = span["bbox"][0]
             if "Two-Column" in layout_style:
                 st.session_state.top_boundary_val = 85
                 st.session_state.h_limit_val = int(profile_x0) if profile_x0 else 220
@@ -84,14 +83,18 @@ def redact_pdf(file_bytes, layout_profile, w_barrier, h_ceiling, top_start):
     for page in doc:
         page_text, page_dict = page.get_text(), page.get_text("dict")
         
+        # 🛡️ UNIFIED FIXED PASS: Scans upper quadrant for name blocks safely
         protected_words = set()
-        if page_dict.get("blocks", []):
-            first_block = page_dict.get("blocks", [])[0]
-            for line in first_block.get("lines", []):
+        for block in page_dict.get("blocks", []):
+            for line in block.get("lines", []):
                 for span in line.get("spans", []):
-                    if not core_contact_check(span["text"]) and len(span["text"].strip()) > 1:
-                        for token in span["text"].lower().split():
-                            protected_words.add(token.strip(":,.-_"))
+                    bx0, by0, bx1, by1 = span["bbox"]
+                    # If text sits at the top row, has no contact markers, and isn't an explicit heading title
+                    if by0 < 60 and not core_contact_check(span["text"]):
+                        clean_txt = span["text"].upper().strip()
+                        if clean_txt not in ["EDUCATION", "EXPERIENCE", "PROFILE"]:
+                            for token in span["text"].lower().split():
+                                protected_words.add(token.strip(":,.-_"))
 
         if "Standard Layout" in layout_profile:
             targets = set()
@@ -108,10 +111,11 @@ def redact_pdf(file_bytes, layout_profile, w_barrier, h_ceiling, top_start):
 
             for target in targets:
                 for rect in page.search_for(target):
+                    # Safety Lock: Verify if this specific search item touches any registered name words
                     intersecting_spans = page.get_text("words", clip=rect)
                     is_protected = False
                     for w_item in intersecting_spans:
-                        w_text_clean = w_item[4].lower().strip(":,.-_")
+                        w_text_clean = w_item[4].lower().strip(":,.-_") if len(w_item) > 4 else ""
                         if w_text_clean in protected_words and w_text_clean not in ["today", "cna", "hotmail"]:
                             is_protected = True
                     
@@ -129,7 +133,7 @@ def redact_pdf(file_bytes, layout_profile, w_barrier, h_ceiling, top_start):
             for block in page_dict.get("blocks", []):
                 for line in block.get("lines", []):
                     for span in line.get("spans", []):
-                        if span["text"].upper().strip() in ["PROFILE", "EXPERIENCE"]:
+                        if span["text"].upper().strip() in ["PROFILE", "EXPERIENCE", "EDUCATION"]:
                             main_column_left = float(span["bbox"][0])
                             break
             for block in page_dict.get("blocks", []):
@@ -143,6 +147,7 @@ def redact_pdf(file_bytes, layout_profile, w_barrier, h_ceiling, top_start):
     return output_buffer.getvalue(), total_pages
 
 if uploaded_file is not None and uploaded_file.name.lower().endswith(".pdf"):
+    file_bytes = uploaded_file.read()
     base_name = uploaded_file.name[:-4]
     output_filename = f"{base_name}_Redacted.pdf"
     col1, col2 = st.columns(2)
@@ -156,6 +161,7 @@ if uploaded_file is not None and uploaded_file.name.lower().endswith(".pdf"):
         except Exception as e: st.error(f"Error compiling document: {e}"); scrubbed_pdf, total_pages, preview_page = None, 1, 1
     st.markdown("---")
     if st.button("🧹 Clear Current File", use_container_width=True):
+        st.unstore() if hasattr(st, "unstore") else None
         st.rerun()
     with col2:
         st.subheader("Live Document Preview")
