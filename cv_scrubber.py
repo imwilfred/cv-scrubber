@@ -25,10 +25,12 @@ if layout_style != st.session_state.active_layout:
     else:
         st.session_state.top_boundary_val, st.session_state.h_limit_val, st.session_state.v_limit_val = 32, 310, 115
 
-uploaded_file = st.file_uploader("Choose a PDF resume", type=["pdf", "docx", "doc"])
+# FIXED: Restricted to accept only "pdf" so the button label only displays "PDF"
+uploaded_file = st.file_uploader("Choose a PDF resume", type=["pdf"])
 
 if uploaded_file is not None:
-    if uploaded_file.name.lower().endswith((".docx", ".doc")):
+    filename_lower = uploaded_file.name.lower()
+    if filename_lower.endswith((".docx", ".doc")):
         st.error("⚠️ Invalid File Type Detected!")
         msg = "Our CV Scrubber can only process **PDF files**.\n\n"
         msg += "**How to convert your Word document:**\n"
@@ -49,7 +51,7 @@ if uploaded_file is not None and uploaded_file.name.lower().endswith(".pdf"):
     if st.sidebar.button("🔮 Auto-Tune to Fit Layout", type="primary"):
         try:
             doc = fitz.open(stream=uploaded_file.getvalue(), filetype="pdf")
-            page_dict = doc[0].get_text("dict")
+            page_dict = doc.get_text("dict")
             contact_boxes, profile_x0 = [], None
             for block in page_dict.get("blocks", []):
                 if "lines" in block:
@@ -57,7 +59,7 @@ if uploaded_file is not None and uploaded_file.name.lower().endswith(".pdf"):
                         for span in line.get("spans", []):
                             txt = span["text"].upper().strip()
                             if core_contact_check(span["text"]): contact_boxes.append(fitz.Rect(span["bbox"]))
-                            if txt in ["PROFILE", "EXPERIENCE"]: profile_x0 = span["bbox"][0]
+                            if txt in ["PROFILE", "EXPERIENCE"]: profile_x0 = span["bbox"]
             if "Two-Column" in layout_style:
                 st.session_state.top_boundary_val = 85
                 st.session_state.h_limit_val = int(profile_x0) if profile_x0 else 220
@@ -107,7 +109,7 @@ def redact_pdf(file_bytes, layout_profile, w_barrier, h_ceiling, top_start):
                     for line in block["lines"]:
                         for span in line.get("spans", []):
                             if span["text"].upper().strip() in ["PROFILE", "EXPERIENCE"]:
-                                if w_barrier == 220: main_column_left = float(span["bbox"][0])
+                                if w_barrier == 220: main_column_left = float(span["bbox"])
             for block in page_dict.get("blocks", []):
                 bx0, by0, bx1, by1 = block["bbox"]
                 if bx1 < main_column_left and top_start < by0 < h_ceiling:
@@ -141,6 +143,6 @@ if uploaded_file is not None and uploaded_file.name.lower().endswith(".pdf"):
         if scrubbed_pdf:
             try:
                 images = convert_from_bytes(scrubbed_pdf, first_page=preview_page, last_page=preview_page)
-                if images: st.image(images[0], caption=f"Page {preview_page} of {total_pages}", width=zoom_level)
+                if images: st.image(images, caption=f"Page {preview_page} of {total_pages}", width=zoom_level)
             except Exception as img_err:
                 st.error(f"Visual preview error: {img_err}")
