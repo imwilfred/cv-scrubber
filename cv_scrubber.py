@@ -39,7 +39,8 @@ if uploaded_file is not None and uploaded_file.name.lower().endswith(".pdf"):
     if st.sidebar.button("🔮 Auto-Tune to Fit Layout", type="primary"):
         try:
             doc = fitz.open(stream=file_bytes, filetype="pdf")
-            first_page = doc
+            first_page = doc[0]
+            # FIXED: Read text coordinates directly from the page layout matrix
             page_dict = first_page.get_text("dict")
             contact_boxes, profile_x0 = [], None
             for block in page_dict.get("blocks", []):
@@ -108,7 +109,6 @@ def redact_pdf(file_bytes, layout_profile, w_barrier, h_ceiling, top_start):
                 for line in block.get("lines", []):
                     for span in line.get("spans", []):
                         if span["text"].upper().strip() in ["PROFILE", "EXPERIENCE"]:
-                            # FIXED: Extract ONLY x0 boundary element to satisfy float restrictions
                             main_column_left = float(span["bbox"][0])
                             break
             for block in page_dict.get("blocks", []):
