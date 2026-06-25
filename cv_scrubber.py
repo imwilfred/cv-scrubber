@@ -52,7 +52,7 @@ if uploaded_file is not None:
     if st.sidebar.button("🔮 Auto-Tune to Fit Layout", type="primary", use_container_width=True):
         try:
             doc = fitz.open(stream=uploaded_file.getvalue(), filetype="pdf")
-            first_page = doc
+            first_page = doc[0]
             page_dict = first_page.get_text("dict")
             
             contact_boxes = []
@@ -67,7 +67,7 @@ if uploaded_file is not None:
                                 if core_contact_check(span["text"]):
                                     contact_boxes.append(fitz.Rect(span["bbox"]))
                                 if txt in ["PROFILE", "PROFESSIONAL EXPERIENCE", "EXPERIENCE"]:
-                                    profile_x0 = span["bbox"]
+                                    profile_x0 = span["bbox"][0]
 
             if "Two-Column" in layout_style:
                 st.session_state.top_boundary_val = 85
@@ -90,7 +90,7 @@ if uploaded_file is not None:
         except Exception as tune_err:
             st.sidebar.error(f"Auto-tune parsing failed: {tune_err}")
 
-# --- Render Sliders Linked to Session State ---
+# --- Render Fine Adjustment Sliders (1px Step Controls) ---
 st.sidebar.markdown("---")
 st.sidebar.header("Live Mask Adjustment")
 
@@ -122,12 +122,13 @@ else:
 st.session_state.h_limit_val = h_limit
 st.session_state.v_limit_val = v_limit
 
-# --- New Interactive Zoom Settings ---
+# --- Preview Zoom Controller Slider Section ---
 st.sidebar.markdown("---")
-st.sidebar.header("Display Settings")
-preview_zoom = st.sidebar.slider(
-    "Preview Image Zoom Width", min_value=300, max_value=1200, 
-    value=750, step=25, help="Slide right to scale up and inspect text boundaries closer."
+st.sidebar.header("Preview Scale Settings")
+zoom_level = st.sidebar.slider(
+    "🔍 Document Image Zoom Level", 
+    min_value=300, max_value=1200, value=750, step=25,
+    help="Increase to scale up document width on screen, decrease to view the whole page layout structure smoothly."
 )
 
 # --- Processing Pipeline Functions ---
@@ -165,7 +166,7 @@ def redact_pdf(file_bytes, layout_profile, width_barrier, height_ceiling, top_st
                                 txt = span["text"].upper().strip()
                                 if txt in ["PROFILE", "PROFESSIONAL EXPERIENCE", "EXPERIENCE"]:
                                     if width_barrier == 220:
-                                        main_column_left = float(span["bbox"])
+                                        main_column_left = float(span["bbox"][0])
                                     break
             
             for block in page_dict.get("blocks", []):
@@ -224,6 +225,6 @@ if uploaded_file is not None:
             try:
                 images = convert_from_bytes(scrubbed_pdf, first_page=preview_page, last_page=preview_page)
                 if images:
-                    # Dynamically passing 'preview_zoom' into width control parameters
-                    st.image(images, caption=f"Visual Layout Map Preview (Page {preview_page} of {total_pages})", width=preview_zoom)
-            except Exception as img_err:
+                    # Dynamically override and control layout display size with the interactive zoom_level variable
+                    st.image(
+                        images, 
