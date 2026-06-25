@@ -17,7 +17,7 @@ layout_style = st.sidebar.selectbox("Select layout style:", options=["Standard L
 if layout_style != st.session_state.active_layout:
     st.session_state.active_layout = layout_style
     if "Two-Column" in layout_style: st.session_state.top_boundary_val, st.session_state.h_limit_val, st.session_state.v_limit_val = 88, 220, 260
-    else: st.session_state.top_boundary_val, st.session_state.h_limit_val, st.session_state.v_limit_val = 32, 310, 115
+    else: st.session_state.top_boundary_val, st.session_state.h_limit_val, st.session_state.v_limit_val = 0, 180, 100
 
 uploaded_file = st.file_uploader("Upload the PDF Resume", type=["pdf", "docx", "doc"])
 
@@ -35,7 +35,6 @@ if uploaded_file is not None and uploaded_file.name.lower().endswith(".pdf"):
     if st.sidebar.button("🔮 Auto-Tune to Fit Layout", type="primary"):
         try:
             doc = fitz.open(stream=file_bytes, filetype="pdf")
-            # FIXED: Target the first page [0] instead of the whole multi-page doc container
             first_page = doc[0]
             page_dict = first_page.get_text("dict")
             contact_boxes, profile_x0 = [], None
@@ -50,9 +49,9 @@ if uploaded_file is not None and uploaded_file.name.lower().endswith(".pdf"):
                 st.session_state.h_limit_val = int(profile_x0[0]) if profile_x0 else 220
                 st.session_state.v_limit_val = int(max([r.y1 for r in contact_boxes])) + 15 if contact_boxes else 260
             else:
-                st.session_state.top_boundary_val = 32
-                st.session_state.h_limit_val = int(min([r.x0 for r in contact_boxes])) - 15 if contact_boxes else 310
-                st.session_state.v_limit_val = int(max([r.y1 for r in contact_boxes])) + 5 if contact_boxes else 115
+                st.session_state.top_boundary_val = 0
+                st.session_state.h_limit_val = int(min([r.x0 for r in contact_boxes])) - 15 if contact_boxes else 180
+                st.session_state.v_limit_val = int(max([r.y1 for r in contact_boxes])) + 5 if contact_boxes else 100
             doc.close()
             st.sidebar.success("Auto-tuned successfully!")
         except Exception as e: st.sidebar.error(f"Auto-tune failed: {e}")
@@ -66,7 +65,8 @@ if "Two-Column" in layout_style:
     h_limit = st.sidebar.slider("Mask Width Barrier", 100, 300, st.session_state.h_limit_val, 1, key="h_slider_two")
     v_limit = st.sidebar.slider("Mask Height Ceiling", 100, 500, st.session_state.v_limit_val, 1, key="v_slider_two")
 else:
-    h_limit = st.sidebar.slider("Right Mask Start Width", 200, 450, st.session_state.h_limit_val, 1, key="h_slider_std")
+    # FIXED: Lowered min_value from 200 to 50 to allow full horizontal clearance
+    h_limit = st.sidebar.slider("Right Mask Start Width", 50, 450, st.session_state.h_limit_val, 1, key="h_slider_std")
     v_limit = st.sidebar.slider("Right Mask Vertical Limit", 50, 250, st.session_state.v_limit_val, 1, key="v_slider_std")
 st.session_state.h_limit_val, st.session_state.v_limit_val = h_limit, v_limit
 
@@ -90,10 +90,7 @@ def redact_pdf(file_bytes, layout_profile, w_barrier, h_ceiling, top_start):
             for block in page_dict.get("blocks", []):
                 for line in block.get("lines", []):
                     for span in line.get("spans", []):
-                        if span["text"].upper().strip() in ["PROFILE", "EXPERIENCE"]:
-                            # FIXED: Extract index 0 immediately from the coordinate matrix
-                            main_column_left = float(span["bbox"][0])
-                            break
+                        if span["text"].upper().strip() in ["PROFILE", "EXPERIENCE"] and w_barrier == 220: main_column_left = float(span["bbox"][0])
             for block in page_dict.get("blocks", []):
                 bx0, by0, bx1, by1 = block["bbox"]
                 if bx1 < main_column_left and top_start < by0 < h_ceiling: page.add_redact_annot(fitz.Rect(0, max(by0 - 4, top_start), main_column_left - 10, min(by1 + 4, h_ceiling)), fill=(1, 1, 1))
@@ -104,30 +101,25 @@ def redact_pdf(file_bytes, layout_profile, w_barrier, h_ceiling, top_start):
     doc.close()
     return output_buffer.getvalue(), total_pages
 
-col1, col2 = st.columns(2)
-with col1:
-    st.subheader("Control Actions")
-    scrubbed_pdf = None
-    if uploaded_file is not None and uploaded_file.name.lower().endswith(".pdf"):
-        base_name = uploaded_file.name[:-4]
-        output_filename = f"{base_name}_Redacted.pdf"
+if uploaded_file is not None and uploaded_file.name.lower().endswith(".pdf"):
+    base_name = uploaded_file.name[:-4]
+    output_filename = f"{base_name}_Redacted.pdf"
+    col1, col2 = st.columns(2)
+    with col1:
+        st.subheader("Control Actions")
         try:
             scrubbed_pdf, total_pages = redact_pdf(file_bytes, layout_style, h_limit, v_limit, top_boundary)
             st.success("Calculated successfully!")
             st.download_button(label="Download Redacted PDF", data=scrubbed_pdf, file_name=output_filename, mime="application/pdf", type="primary")
             preview_page = st.selectbox("Flip Preview Page:", options=list(range(1, total_pages + 1)), index=0) if total_pages > 1 else 1
-        except Exception as e: 
-            st.error(f"Error compiling document: {e}")
-            scrubbed_pdf = None
-            
+        except Exception as e: st.error(f"Error compiling document: {e}"); scrubbed_pdf, total_pages, preview_page = None, 1, 1
     st.markdown("---")
     if st.button("🧹 Clear Current File", use_container_width=True):
         st.rerun()
-
-with col2:
-    st.subheader("Live Document Preview")
-    if scrubbed_pdf:
-        try:
-            images = convert_from_bytes(scrubbed_pdf, first_page=preview_page, last_page=preview_page)
-            if images: st.image(images, caption=f"Page {preview_page} of {total_pages}", width=zoom_level)
-        except Exception as img_err: st.error(f"Visual preview error: {img_err}")
+    with col2:
+        st.subheader("Live Document Preview")
+        if scrubbed_pdf:
+            try:
+                images = convert_from_bytes(scrubbed_pdf, first_page=preview_page, last_page=preview_page)
+                if images: st.image(images, caption=f"Page {preview_page} of {total_pages}", width=zoom_level)
+            except Exception as img_err: st.error(f"Visual preview error: {img_err}")
