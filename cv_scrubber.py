@@ -7,7 +7,7 @@ from pdf2image import convert_from_bytes
 st.set_page_config(page_title="PDF CV Scrubber", page_icon="doc", layout="wide")
 
 st.title("Interactive PDF CV Contact Scrubber")
-st.write("Upload your resume and use Auto-Tune or manual sliders to frame your layout perfectly across multiple pages.")
+st.write("Upload your resume and use Auto-Tune or manual sliders to frame your layout perfectly.")
 
 # Initialize session state variables to track slider overrides dynamically
 if "top_boundary_val" not in st.session_state: st.session_state.top_boundary_val = 88
@@ -52,12 +52,13 @@ if uploaded_file is not None:
     if st.sidebar.button("🔮 Auto-Tune to Fit Layout", type="primary", use_container_width=True):
         try:
             doc = fitz.open(stream=uploaded_file.getvalue(), filetype="pdf")
-            first_page = doc[0]  # Tune parameters based on the primary header page structure
+            first_page = doc[0]  # Read alignment properties primarily from page one
             page_dict = first_page.get_text("dict")
             
             contact_boxes = []
             profile_x0 = None
             
+            # Map where contact anchors and main headers live
             for block in page_dict.get("blocks", []):
                 if "lines" in block:
                     for line in block["lines"]:
@@ -90,7 +91,7 @@ if uploaded_file is not None:
         except Exception as tune_err:
             st.sidebar.error(f"Auto-tune parsing failed: {tune_err}")
 
-# --- Render Sliders ---
+# --- Render Sliders Linked to Session State ---
 st.sidebar.markdown("---")
 st.sidebar.header("Live Mask Adjustment")
 
@@ -125,19 +126,22 @@ st.session_state.v_limit_val = v_limit
 # --- Processing Pipeline Functions ---
 def redact_pdf(file_bytes, layout_profile, width_barrier, height_ceiling, top_start):
     doc = fitz.open(stream=file_bytes, filetype="pdf")
+    total_page_count = len(doc)
     
-    # MODIFIED: Loops dynamically through every page of the uploaded PDF structure
-    for page in doc:
+    # Process page-by-page across the full file array length
+    for page_idx in range(total_page_count):
+        page = doc[page_idx]
         page_text = page.get_text()
         page_dict = page.get_text("dict")
         page_width = page.rect.width
         
         if "Standard Layout" in layout_profile:
-            # Apply header quadrant mask
-            right_mask = fitz.Rect(width_barrier, top_start, page_width - 15, height_ceiling)
-            page.add_redact_annot(right_mask, fill=(1, 1, 1))
+            # Apply contact area masking ONLY to the first page (header region)
+            if page_idx == 0:
+                right_mask = fitz.Rect(width_barrier, top_start, page_width - 15, height_ceiling)
+                page.add_redact_annot(right_mask, fill=(1, 1, 1))
             
-            # Global text regex search across all page body levels
+            # Substring safety check scans all pages for trailing links or accidental fields
             targets = set()
             emails = re.findall(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', page_text)
             for e in emails: targets.add(e.strip())
@@ -151,47 +155,43 @@ def redact_pdf(file_bytes, layout_profile, width_barrier, height_ceiling, top_st
                     tight_rect = fitz.Rect(rect.x0 - 2, rect.y0 - 1, rect.x1 + 2, rect.y1 + 1)
                     page.add_redact_annot(tight_rect, fill=(1, 1, 1))
         else:
+            # Two-Column Sidebar Profile: Mask structural header blocks only on the first page
             main_column_left = float(width_barrier)
-            for block in page_dict.get("blocks", []):
-                if "lines" in block:
-                    for line in block["lines"]:
-                        if "spans" in line:
-                            for span in line["spans"]:
-                                txt = span["text"].upper().strip()
-                                if txt in ["PROFILE", "PROFESSIONAL EXPERIENCE", "EXPERIENCE"]:
-                                    if width_barrier == 220:
-                                        main_column_left = float(span["bbox"][0])
-                                    break
-            
-            for block in page_dict.get("blocks", []):
-                bx0, by0, bx1, by1 = block["bbox"]
-                if bx1 < main_column_left and top_start < by0 < height_ceiling:
-                    sidebar_mask = fitz.Rect(0, max(by0 - 4, top_start), main_column_left - 10, min(by1 + 4, height_ceiling))
-                    page.add_redact_annot(sidebar_mask, fill=(1, 1, 1))
+            if page_idx == 0:
+                for block in page_dict.get("blocks", []):
+                    if "lines" in block:
+                        for line in block["lines"]:
+                            if "spans" in line:
+                                for span in line["spans"]:
+                                    txt = span["text"].upper().strip()
+                                    if txt in ["PROFILE", "PROFESSIONAL EXPERIENCE", "EXPERIENCE"]:
+                                        if width_barrier == 220:
+                                            main_column_left = float(span["bbox"][0])
+                                        break
+                
+                for block in page_dict.get("blocks", []):
+                    bx0, by0, bx1, by1 = block["bbox"]
+                    if bx1 < main_column_left and top_start < by0 < height_ceiling:
+                        sidebar_mask = fitz.Rect(0, max(by0 - 4, top_start), main_column_left - 10, min(by1 + 4, height_ceiling))
+                        page.add_redact_annot(sidebar_mask, fill=(1, 1, 1))
                     
         page.apply_redactions()
         
     output_buffer = io.BytesIO()
     doc.save(output_buffer, garbage=4, deflate=True)
     doc.close()
-    return output_buffer.getvalue()
+    return output_buffer.getvalue(), total_page_count
 
 # --- Page Layout Rendering Matrix ---
 if uploaded_file is not None:
     file_bytes = uploaded_file.read()
-    
-    # Pre-calculate total document pages for layout controls
-    temp_doc = fitz.open(stream=file_bytes, filetype="pdf")
-    total_pages = len(temp_doc)
-    temp_doc.close()
-    
     col1, col2 = st.columns(2)
     
     with col1:
         st.subheader("Control Actions")
         try:
-            scrubbed_pdf = redact_pdf(file_bytes, layout_style, h_limit, v_limit, top_boundary)
-            st.success("Layout masks calculated successfully across all pages!")
+            scrubbed_pdf, total_pages = redact_pdf(file_bytes, layout_style, h_limit, v_limit, top_boundary)
+            st.success(f"Layout masks calculated successfully! Document contains {total_pages} page(s).")
             
             st.download_button(
                 label="📥 Download Redacted PDF",
@@ -202,25 +202,14 @@ if uploaded_file is not None:
             )
         except Exception as e:
             st.error(f"Error compiling document matrix layout: {e}")
-            scrubbed_pdf = None
+            scrubbed_pdf, total_pages = None, 1
 
     with col2:
         st.subheader("Live Document Preview")
         if scrubbed_pdf:
-            # MODIFIED: Renders interactive page picker layout only if document is multi-page
-            if total_pages > 1:
-                preview_page = st.number_input(
-                    f"View Page (1 to {total_pages})", 
-                    min_value=1, 
-                    max_value=total_pages, 
-                    value=1, 
-                    step=1
-                )
-            else:
-                preview_page = 1
-                
+            # Interactive Page Navigation widget for multi-page scanning
+            preview_page = st.number_input("Navigate Preview Page", min_value=1, max_value=total_pages, value=1, step=1)
             try:
-                # Convert only the user-selected preview page into a display image matrix instantly
+                # Convert only the active chosen preview page into a PNG element
                 images = convert_from_bytes(scrubbed_pdf, first_page=preview_page, last_page=preview_page)
                 if images:
-                    st.image(images, caption=f"Visual Preview - Page {preview_page} of {total_pages}", use_container_width=True)
