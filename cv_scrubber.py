@@ -6,6 +6,27 @@ st.set_page_config(page_title="PDF CV Scrubber", layout="wide")
 st.title("Interactive PDF CV Contact Scrubber")
 st.write("Upload your resume and use Auto-Tune or manual sliders.")
 
+# --- CSS Hack to override the file type subcaption label text ---
+st.markdown(
+    """
+    <style>
+    div[data-testid="stFileUploaderSubcaption"] {
+        visibility: hidden;
+        position: relative;
+    }
+    div[data-testid="stFileUploaderSubcaption"]::after {
+        content: "Limit 200MB per file • PDF";
+        visibility: visible;
+        position: absolute;
+        top: 0;
+        left: 0;
+        color: #808495;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
 if "top_boundary_val" not in st.session_state: st.session_state.top_boundary_val = 88
 if "h_limit_val" not in st.session_state: st.session_state.h_limit_val = 220
 if "v_limit_val" not in st.session_state: st.session_state.v_limit_val = 260
@@ -25,8 +46,7 @@ if layout_style != st.session_state.active_layout:
     else:
         st.session_state.top_boundary_val, st.session_state.h_limit_val, st.session_state.v_limit_val = 32, 310, 115
 
-# Allowed types updated to let Word files pass into our custom alert engine
-uploaded_file = st.file_uploader("Choose a resume file", type=["pdf", "docx", "doc"])
+uploaded_file = st.file_uploader("Choose a PDF resume", type=["pdf", "docx", "doc"])
 
 if uploaded_file is not None:
     filename_lower = uploaded_file.name.lower()
@@ -48,9 +68,10 @@ def core_contact_check(text):
     return has_e or has_p or "linkedin.com" in text_lower or "/in/" in text_lower or "www." in text_lower
 
 if uploaded_file is not None and uploaded_file.name.lower().endswith(".pdf"):
+    file_bytes = uploaded_file.read()
     if st.sidebar.button("🔮 Auto-Tune to Fit Layout", type="primary"):
         try:
-            doc = fitz.open(stream=uploaded_file.getvalue(), filetype="pdf")
+            doc = fitz.open(stream=file_bytes, filetype="pdf")
             page_dict = doc.get_text("dict")
             contact_boxes, profile_x0 = [], None
             for block in page_dict.get("blocks", []):
@@ -122,7 +143,6 @@ def redact_pdf(file_bytes, layout_profile, w_barrier, h_ceiling, top_start):
     return output_buffer.getvalue(), total_pages
 
 if uploaded_file is not None and uploaded_file.name.lower().endswith(".pdf"):
-    file_bytes = uploaded_file.read()
     base_name = uploaded_file.name[:-4] if uploaded_file.name.lower().endswith(".pdf") else uploaded_file.name
     output_filename = f"{base_name}_Redacted.pdf"
     col1, col2 = st.columns(2)
