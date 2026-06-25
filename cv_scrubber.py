@@ -80,7 +80,8 @@ def redact_pdf(file_bytes, layout_profile, w_barrier, h_ceiling, top_start, mask
         for block in page_dict.get("blocks", []):
             for line in block.get("lines", []):
                 for span in line.get("spans", []):
-                    if span["bbox"][1] < 60 and not core_contact_check(span["text"]):
+                    bbox = span["bbox"]
+                    if bbox[1] < 60 and not core_contact_check(span["text"]):
                         if span["text"].upper().strip() not in ["EDUCATION", "EXPERIENCE", "PROFILE"]:
                             for token in span["text"].lower().split(): protected_words.add(token.strip(":,.-_"))
         if "Standard Layout" in layout_profile:
@@ -91,11 +92,12 @@ def redact_pdf(file_bytes, layout_profile, w_barrier, h_ceiling, top_start, mask
             for word in ["mobile:", "email:", "phone:", "website:", "linkedin:", "hotmail", "yahoo", "outlook", "today", "cna"]:
                 if word in page_text.lower(): targets.add(word)
             for link in page.get_links():
-                if link["from"][1] < 130: page.add_redact_annot(fitz.Rect(link["from"][0] - w_barrier, link["from"][1] - 6, link["from"][2] + 30, link["from"][3] + h_ceiling), fill=mask_color)
+                link_from = link["from"]
+                if link_from[1] < 130: page.add_redact_annot(fitz.Rect(link_from[0] - w_barrier, link_from[1] - 6, link_from[2] + 30, link_from[3] + h_ceiling), fill=mask_color)
             for target in targets:
                 for rect in page.search_for(target):
                     if rect.y0 > 130: continue
-                    is_p = any(w[4].lower().strip(":,.-_") in protected_words for w in page.get_text("words", clip=rect) if w[4].lower().strip(":,.-_") not in ["today", "cna", "hotmail"])
+                    is_p = any(w.lower().strip(":,.-_") in protected_words for w in page.get_text("words", clip=rect) if w.lower().strip(":,.-_") not in ["today", "cna", "hotmail"])
                     if not is_p: page.add_redact_annot(fitz.Rect(rect.x0 - w_barrier, rect.y0 - 6, rect.x1 + 30, rect.y1 + h_ceiling), fill=mask_color)
             for s_rect in page.search_for("/"):
                 if s_rect.y0 < 130 and s_rect.x0 > 150: page.add_redact_annot(fitz.Rect(s_rect.x0 - 4, s_rect.y0 - 4, s_rect.x1 + 4, s_rect.y1 + 4), fill=mask_color)
@@ -106,7 +108,8 @@ def redact_pdf(file_bytes, layout_profile, w_barrier, h_ceiling, top_start, mask
                     for span in line.get("spans", []):
                         if span["text"].upper().strip() in ["PROFILE", "EXPERIENCE", "EDUCATION"] and w_barrier == 220: main_col = float(span["bbox"][0])
             for block in page_dict.get("blocks", []):
-                if block["bbox"][2] < main_col and top_start < block["bbox"][1] < h_ceiling: page.add_redact_annot(fitz.Rect(0, max(block["bbox"][1] - 4, top_start), main_col - 10, min(block["bbox"][3] + 4, h_ceiling)), fill=mask_color)
+                bbox = block["bbox"]
+                if bbox[2] < main_col and top_start < bbox[1] < h_ceiling: page.add_redact_annot(fitz.Rect(0, max(bbox[1] - 4, top_start), main_col - 10, min(bbox[3] + 4, h_ceiling)), fill=mask_color)
         page.apply_redactions()
     output_buffer = io.BytesIO()
     doc.save(output_buffer, garbage=4, deflate=True)
