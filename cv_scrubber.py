@@ -62,7 +62,7 @@ if uploaded_file is not None:
                 
                 # Provide download button for the new PDF
                 st.download_button(
-                    label="?? Download Redacted PDF",
+                    label="Download Redacted PDF",
                     data=scrubbed_pdf,
                     file_name="redacted_resume.pdf",
                     mime="application/pdf"
