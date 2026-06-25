@@ -42,7 +42,7 @@ def redact_pdf(file_bytes, layout_style):
     doc = fitz.open(stream=file_bytes, filetype="pdf")
     redactions_applied = 0
     
-    # Precise regex patterns to locate exact character sequences to slice out
+    # Precise regex patterns to isolate specific contact blocks if merged with text
     email_pattern = re.compile(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}')
     phone_pattern = re.compile(r'\+?\d{1,4}[-.\s]?\(?\d{1,3}?\)?[-.\s]?\d{3,4}[-.\s]?\d{3,4}')
     
@@ -51,34 +51,32 @@ def redact_pdf(file_bytes, layout_style):
         is_sidebar_mode = "Two-Column Sidebar Layout" in layout_style
         contact_y_positions = []
         
-        # Phase 1: Track and mask contact elements with character-level protection
+        # Phase 1: Track and mask contact elements with coordinate exclusion
         for block in page_dict.get("blocks", []):
             if "lines" in block:
                 for line in block["lines"]:
                     if "spans" in line:
                         for span in line["spans"]:
                             span_text = span["text"]
+                            rect = fitz.Rect(span["bbox"])
                             
-                            # CRITICAL LOCK: If a string contains your name, do not erase the block container!
-                            if "Jiayi" in span_text or "Edward" in span_text or "LIM" in span_text:
-                                # Isolate and mask ONLY the email inside this mixed container text
+                            # ABSOLUTE BOUNDARY LOCK: If this text element sits in the upper top header area 
+                            # (Vertical Y position is less than 75), it is mathematically forbidden from being whited out.
+                            # This strictly protects your name block even if it shares a layout stream container.
+                            if rect.y0 < 75:
+                                # Safe Slicing: Only search and remove specific details inside this header block if they exist
                                 for email_match in email_pattern.finditer(span_text):
                                     email_str = email_match.group(0)
                                     rect_list = page.search_for(email_str)
-                                    for rect in rect_list:
-                                        page.add_redact_annot(rect, fill=(1, 1, 1))
-                                        redactions_applied += 1
-                                # Isolate and mask ONLY the phone numbers inside this mixed container text
-                                for phone_match in phone_pattern.finditer(span_text):
-                                    phone_str = phone_match.group(0)
-                                    rect_list = page.search_for(phone_str)
-                                    for rect in rect_list:
-                                        page.add_redact_annot(rect, fill=(1, 1, 1))
-                                        redactions_applied += 1
-                            
-                            # Standard clean behavior if the container is purely contact info
-                            elif core_contact_check(span_text) or should_scrub_labels(span_text):
-                                rect = fitz.Rect(span["bbox"])
+                                    for r in rect_list:
+                                        # Only white out if the exact coordinate doesn't overlap the far left name zone
+                                        if r.x0 > 200: 
+                                            page.add_redact_annot(r, fill=(1, 1, 1))
+                                            redactions_applied += 1
+                                continue
+                                
+                            # Standard clean behavior for everything safely below the top title name zone
+                            if core_contact_check(span_text) or should_scrub_labels(span_text):
                                 contact_y_positions.append(rect.y0)
                                 tight_rect = fitz.Rect(rect.x0 - 4, rect.y0 - 2, rect.x1 + 4, rect.y1 + 2)
                                 page.add_redact_annot(tight_rect, fill=(1, 1, 1))
@@ -97,7 +95,8 @@ def redact_pdf(file_bytes, layout_style):
                                 span_text = span["text"]
                                 rect = fitz.Rect(span["bbox"])
                                 
-                                if min_contact_y <= rect.y0 <= max_contact_y:
+                                # Only clean location markers if they are securely below the header line and inside the contact block
+                                if rect.y0 >= 75 and min_contact_y <= rect.y0 <= max_contact_y:
                                     is_location = bool(re.search(r'\b(singapore|asia|malaysia|usa|uk|london|address|location)\b', span_text.lower()))
                                     if is_location or len(span_text.strip()) < 3: 
                                         tight_rect = fitz.Rect(rect.x0 - 4, rect.y0 - 2, rect.x1 + 4, rect.y1 + 2)
@@ -106,7 +105,8 @@ def redact_pdf(file_bytes, layout_style):
 
         # Phase 3: Targeted Sidebar Icon Column Erasing Channel
         if is_sidebar_mode:
-            icon_strip_zone = fitz.Rect(12, 20, 42, 195)
+            # Drop the precise icon column track mask starting safely below the name header line (y0=85)
+            icon_strip_zone = fitz.Rect(12, 85, 42, 195)
             page.add_redact_annot(icon_strip_zone, fill=(1, 1, 1))
             redactions_applied += 1
             
@@ -116,9 +116,10 @@ def redact_pdf(file_bytes, layout_style):
         for slug in custom_slugs:
             rect_list = page.search_for(slug)
             for rect in rect_list:
-                safe_slug_rect = fitz.Rect(rect.x0 - 4, rect.y0 - 2, rect.x1 + 4, rect.y1 + 2)
-                page.add_redact_annot(safe_slug_rect, fill=(1, 1, 1))
-                redactions_applied += 1
+                if rect.y0 >= 75:  # Absolute safety gate check
+                    safe_slug_rect = fitz.Rect(rect.x0 - 4, rect.y0 - 2, rect.x1 + 4, rect.y1 + 2)
+                    page.add_redact_annot(safe_slug_rect, fill=(1, 1, 1))
+                    redactions_applied += 1
                 
         # Commit redactions permanently onto the current page layout
         page.apply_redactions()
@@ -133,14 +134,14 @@ if uploaded_file is not None:
     file_bytes = uploaded_file.read()
     
     if st.button("Clean PDF Document", type="primary"):
-        with st.spinner("Executing structural multi-phase scrubbing pipeline..."):
+        with st.spinner("Executing structural coordinate-locked protection pipeline..."):
             try:
                 scrubbed_pdf, count = redact_pdf(file_bytes, icon_alignment)
                 
                 if count == 0:
                     st.warning("No target details matched your active layout profile.")
                 else:
-                    st.success("Document scrubbed flawlessly! Name locked and fully protected.")
+                    st.success("Document scrubbed flawlessly! Header name zone completely locked and protected.")
                 
                 st.download_button(
                     label="Download Redacted PDF",
