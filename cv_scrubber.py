@@ -6,16 +6,15 @@ st.set_page_config(page_title="PDF CV Scrubber", layout="wide")
 st.title("Interactive PDF CV Contact Scrubber")
 st.write("Upload your resume and use Auto-Tune or manual sliders.")
 
-# --- THE ABSOLUTE CSS FIX: Re-writes the text inside the box dynamically ---
+# --- CSS FIX: Forces the subcaption to display exactly "200MB" ---
 st.markdown(
     """
     <style>
-    /* Targeted script to search for text inside the uploader and cleanly replace it */
     div[data-testid="stFileUploaderSubcaption"] {
         font-size: 0 !important;
     }
     div[data-testid="stFileUploaderSubcaption"]::after {
-        content: "Limit 200MB per file • PDF";
+        content: "200MB";
         font-size: 14px !important;
         color: #808495;
     }
@@ -43,8 +42,8 @@ if layout_style != st.session_state.active_layout:
     else:
         st.session_state.top_boundary_val, st.session_state.h_limit_val, st.session_state.v_limit_val = 32, 310, 115
 
-# Cleaned upload configuration box
-uploaded_file = st.file_uploader("Choose a PDF resume", type=["pdf", "docx", "doc"])
+# CHANGED: Title text updated to "Upload the PDF Resume"
+uploaded_file = st.file_uploader("Upload the PDF Resume", type=["pdf", "docx", "doc"])
 
 if uploaded_file is not None:
     filename_lower = uploaded_file.name.lower()
