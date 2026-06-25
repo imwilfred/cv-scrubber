@@ -260,4 +260,4 @@ if uploaded_file is not None:
                 )
                 if images:
                     st.image(
-                        images, 
+                        images,
