@@ -109,6 +109,12 @@ if uploaded_file is not None and uploaded_file.name.lower().endswith(".pdf"):
             scrubbed_pdf, total_pages = redact_pdf(file_bytes, layout_style, h_limit, v_limit, top_boundary)
             st.success("Calculated successfully!")
             st.download_button(label="Download Redacted PDF", data=scrubbed_pdf, file_name=output_filename, mime="application/pdf", type="primary")
+            
+            # --- FIXED SECTION: Clear File Form State Button Channel ---
+            st.markdown("---")
+            if st.button("🧹 Clear Current File", use_container_width=True):
+                st.rerun()
+                
             preview_page = st.selectbox("Flip Preview Page:", options=list(range(1, total_pages + 1)), index=0) if total_pages > 1 else 1
         except Exception as e: st.error(f"Error compiling document: {e}"); scrubbed_pdf, total_pages, preview_page = None, 1, 1
     with col2:
