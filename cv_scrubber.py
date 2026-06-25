@@ -6,7 +6,7 @@ import io
 st.set_page_config(page_title="PDF CV Scrubber", page_icon="doc")
 
 st.title("PDF CV Contact Information Scrubber")
-st.write("Upload a PDF resume to cleanly erase contact layers using context-aware multi-column layout protections.")
+st.write("Upload a PDF resume to cleanly erase contact layers using strict vertical column bounding walls.")
 
 # --- UI Sidebar Controls ---
 st.sidebar.header("Adaptive Controls")
@@ -36,17 +36,6 @@ def should_scrub_text(text):
         
     return False
 
-def check_left_neighbor(page, target_rect):
-    """Scans a tiny horizontal zone to the left of the match to check for neighboring body text."""
-    # Look back 80 pixels to the left on the same vertical alignment
-    search_zone = fitz.Rect(target_rect.x0 - 80, target_rect.y0, target_rect.x0, target_rect.y1)
-    left_text = page.get_text("text", clip=search_zone).strip()
-    
-    # If there's non-contact body text right next to it, return True
-    if left_text and not should_scrub_text(left_text) and len(left_text) > 2:
-        return True
-    return False
-
 def redact_pdf(file_bytes, icon_pad):
     doc = fitz.open(stream=file_bytes, filetype="pdf")
     redactions_applied = 0
@@ -54,6 +43,18 @@ def redact_pdf(file_bytes, icon_pad):
     for page in doc:
         page_dict = page.get_text("dict")
         
+        # FIRST PASS: Locate the exact vertical column coordinates where contact text lives
+        contact_columns = []
+        for block in page_dict.get("blocks", []):
+            if "lines" in block:
+                for line in block["lines"]:
+                    if "spans" in line:
+                        for span in line["spans"]:
+                            if should_scrub_text(span["text"]):
+                                # Record the absolute physical left-and-right edges of this text column block
+                                contact_columns.append((block["bbox"][0], block["bbox"][2]))
+        
+        # SECOND PASS: Apply walled redactions
         for block in page_dict.get("blocks", []):
             if "lines" in block:
                 for line in block["lines"]:
@@ -63,42 +64,40 @@ def redact_pdf(file_bytes, icon_pad):
                             
                             if should_scrub_text(span_text):
                                 rect = fitz.Rect(span["bbox"])
+                                block_x0, block_x1 = block["bbox"][0], block["bbox"][2]
                                 
-                                # INTELLIGENT CONTEXT CHECK: Is there independent text directly to our left?
-                                if check_left_neighbor(page, rect):
-                                    # We are right next to body text! Use laser-tight crop to prevent cutting words.
-                                    safe_rect = fitz.Rect(
-                                        rect.x0 - 2, 
-                                        rect.y0 - 2, 
-                                        rect.x1 + 2, 
-                                        rect.y1 + 2
-                                    )
+                                # Check if expanding left passes the outer structural boundary of the contact block itself
+                                # If expanding by icon_pad hits another column's starting space, we lock it down.
+                                is_isolated_column_start = True
+                                for cx0, cx1 in contact_columns:
+                                    # If there's text found to the left that belongs to a separate block structure
+                                    if block_x0 > cx1:
+                                        is_isolated_column_start = False
+                                        break
+                                
+                                if not is_isolated_column_start or (rect.x0 - block_x0) < 5:
+                                    # Alternate check: If the text is sharing a block line with regular phrases
+                                    # Use a laser tight horizontal boundary line to protect adjacent text columns
+                                    safe_rect = fitz.Rect(rect.x0 - 2, rect.y0 - 2, rect.x1 + 2, rect.y1 + 2)
                                 else:
-                                    # It's an isolated block column entry, safe to expand and clear the icon graphic.
-                                    safe_rect = fitz.Rect(
-                                        rect.x0 - icon_pad, 
-                                        rect.y0 - 8, 
-                                        rect.x1 + 5, 
-                                        rect.y1 + 8
-                                    )
+                                    # Truly isolated column area! Expand confidently to mask the icon graphic.
+                                    safe_rect = fitz.Rect(rect.x0 - icon_pad, rect.y0 - 8, rect.x1 + 5, rect.y1 + 8)
                                 
                                 page.add_redact_annot(safe_rect, fill=(1, 1, 1))
                                 redactions_applied += 1
                                 
-        # Fallback pass for layout text remnants
+        # Fallback pass for orphaned text remnants
         page_text = page.get_text()
         custom_slugs = re.findall(r'/[a-zA-Z0-9_\-]{5,}/', page_text)
         for slug in custom_slugs:
             rect_list = page.search_for(slug)
             for rect in rect_list:
-                if check_left_neighbor(page, rect):
-                    safe_slug_rect = fitz.Rect(rect.x0 - 2, rect.y0 - 2, rect.x1 + 2, rect.y1 + 2)
-                else:
-                    safe_slug_rect = fitz.Rect(rect.x0 - icon_pad, rect.y0 - 8, rect.x1 + 5, rect.y1 + 8)
+                # Laser crop by default to guarantee structural work history safety
+                safe_slug_rect = fitz.Rect(rect.x0 - 2, rect.y0 - 2, rect.x1 + 2, rect.y1 + 2)
                 page.add_redact_annot(safe_slug_rect, fill=(1, 1, 1))
                 redactions_applied += 1
                 
-        # Permanently apply the visual white mask
+        # Commit redactions permanently onto the current page layout
         page.apply_redactions()
         
     output_buffer = io.BytesIO()
@@ -111,14 +110,14 @@ if uploaded_file is not None:
     file_bytes = uploaded_file.read()
     
     if st.button("Clean PDF Document", type="primary"):
-        with st.spinner("Executing context-aware multi-column tracking..."):
+        with st.spinner("Executing absolute column barrier protection..."):
             try:
                 scrubbed_pdf, count = redact_pdf(file_bytes, icon_clearance)
                 
                 if count == 0:
                     st.warning("No target fields matched your layout constraints.")
                 else:
-                    st.success("Successfully cleared contact segments while fully protecting experiences text!")
+                    st.success("Successfully cleared contact layers with absolute column safety walls!")
                 
                 st.download_button(
                     label="Download Redacted PDF",
