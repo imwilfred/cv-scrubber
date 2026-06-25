@@ -90,7 +90,7 @@ if uploaded_file is not None:
         except Exception as tune_err:
             st.sidebar.error(f"Auto-tune parsing failed: {tune_err}")
 
-# --- Render Sliders Linked to Session State ---
+# --- Render Sliders Linked to Session State (Finer 1px steps added) ---
 st.sidebar.markdown("---")
 st.sidebar.header("Live Mask Adjustment")
 
@@ -103,20 +103,20 @@ st.session_state.top_boundary_val = top_boundary
 if "Two-Column" in layout_style:
     h_limit = st.sidebar.slider(
         "Mask Width Barrier", min_value=100, max_value=300, 
-        value=st.session_state.h_limit_val, step=5, key="h_slider_two"
+        value=st.session_state.h_limit_val, step=1, key="h_slider_two"
     )
     v_limit = st.sidebar.slider(
         "Mask Height Ceiling", min_value=100, max_value=500, 
-        value=st.session_state.v_limit_val, step=5, key="v_slider_two"
+        value=st.session_state.v_limit_val, step=1, key="v_slider_two"
     )
 else:
     h_limit = st.sidebar.slider(
         "Right Mask Start Width", min_value=200, max_value=450, 
-        value=st.session_state.h_limit_val, step=5, key="h_slider_std"
+        value=st.session_state.h_limit_val, step=1, key="h_slider_std"
     )
     v_limit = st.sidebar.slider(
         "Right Mask Vertical Limit", min_value=50, max_value=250, 
-        value=st.session_state.v_limit_val, step=5, key="v_slider_std"
+        value=st.session_state.v_limit_val, step=1, key="v_slider_std"
     )
 
 st.session_state.h_limit_val = h_limit
@@ -126,7 +126,6 @@ st.session_state.v_limit_val = v_limit
 def redact_pdf(file_bytes, layout_profile, width_barrier, height_ceiling, top_start):
     doc = fitz.open(stream=file_bytes, filetype="pdf")
     
-    # Process every single page in multi-page files
     for page in doc:
         page_text = page.get_text()
         page_dict = page.get_text("dict")
@@ -194,7 +193,6 @@ if uploaded_file is not None:
                 type="primary"
             )
             
-            # Multi-page dropdown selector inside column 1
             if total_pages > 1:
                 st.markdown("---")
                 preview_page = st.selectbox(
@@ -216,9 +214,8 @@ if uploaded_file is not None:
         st.subheader("Live Document Preview")
         if scrubbed_pdf:
             try:
-                # Convert only the selected page to save cloud rendering memory
                 images = convert_from_bytes(scrubbed_pdf, first_page=preview_page, last_page=preview_page)
                 if images:
-                    st.image(images[0], caption=f"Visual Layout Map Preview (Page {preview_page} of {total_pages})", use_container_width=True)
+                    st.image(images, caption=f"Visual Layout Map Preview (Page {preview_page} of {total_pages})", use_container_width=True)
             except Exception as img_err:
                 st.info("Visual preview rendering engine configuration error.")
