@@ -47,11 +47,9 @@ def redact_pdf(file_bytes, layout_profile, width_barrier, height_ceiling):
         
         if "Standard Layout" in layout_profile:
             # --- STRATEGY 1: INTERACTIVE RIGHT QUADRANT MASK ---
-            # Targets the region based directly on your live sidebar slider adjustments
             right_mask = fitz.Rect(width_barrier, 48, page_width - 15, height_ceiling)
             page.add_redact_annot(right_mask, fill=(1, 1, 1))
             
-            # Substring cleanup remains operational behind the scenes for localized safety
             targets = set()
             emails = re.findall(r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}', page_text)
             for e in emails: targets.add(e.strip())
@@ -67,8 +65,7 @@ def redact_pdf(file_bytes, layout_profile, width_barrier, height_ceiling):
             
         else:
             # --- STRATEGY 2: INTERACTIVE CEILING-LOCKED SIDEBAR MASK ---
-            # Automatically senses the main body text starting anchor line
-            main_column_left = width_barrier
+            main_column_left = float(width_barrier)
             for block in page_dict.get("blocks", []):
                 if "lines" in block:
                     for line in block["lines"]:
@@ -76,9 +73,9 @@ def redact_pdf(file_bytes, layout_profile, width_barrier, height_ceiling):
                             for span in line["spans"]:
                                 txt = span["text"].upper().strip()
                                 if txt in ["PROFILE", "PROFESSIONAL EXPERIENCE", "EXPERIENCE"]:
-                                    # Fallback option if slider value is left at default layout settings
                                     if width_barrier == 220:
-                                        main_column_left = span["bbox"]
+                                        # FIXED: Extract ONLY the x0 coordinate (index 0) from the bbox tuple
+                                        main_column_left = float(span["bbox"][0])
                                     break
             
             # Apply redactions strictly inside the container block coordinates restricted by your sliders
@@ -98,18 +95,16 @@ def redact_pdf(file_bytes, layout_profile, width_barrier, height_ceiling):
 if uploaded_file is not None:
     file_bytes = uploaded_file.read()
     
-    # Split the screen into two clean columns: Sliders on Left, Interactive Preview on Right
-    col1, col2 = st.columns([1, 1])
+    col1, col2 = st.columns()
     
     with col1:
         st.subheader("Control Actions")
-        # Real-time document process trigger linked to the slider state matrices
         try:
             scrubbed_pdf = redact_pdf(file_bytes, layout_style, h_limit, v_limit)
             st.success("Layout masks calculated successfully! Check preview on the right.")
             
             st.download_button(
-                label="?? Download Redacted PDF",
+                label="📥 Download Redacted PDF",
                 data=scrubbed_pdf,
                 file_name="cleaned_resume.pdf",
                 mime="application/pdf",
@@ -123,9 +118,8 @@ if uploaded_file is not None:
         st.subheader("Live Document Preview")
         if scrubbed_pdf:
             try:
-                # Convert the modified memory buffer into a rendering display picture instantly
                 images = convert_from_bytes(scrubbed_pdf, first_page=1, last_page=1)
                 if images:
-                    st.image(images[0], caption="First Page Visual Map Preview (Adjust sliders to reposition white-out masks)", use_container_width=True)
+                    st.image(images, caption="First Page Visual Map Preview (Adjust sliders to reposition white-out masks)", use_container_width=True)
             except Exception as img_err:
                 st.info("Visual preview rendering engine requires poppler to be installed on your terminal ecosystem.")
