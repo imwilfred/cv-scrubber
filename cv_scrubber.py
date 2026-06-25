@@ -6,15 +6,15 @@ import io
 st.set_page_config(page_title="PDF CV Scrubber", page_icon="doc")
 
 st.title("PDF CV Contact Information Scrubber")
-st.write("Upload a PDF resume to cleanly erase contact layers based on your document's layout style.")
+st.write("Upload a PDF resume to cleanly erase contact layers with adjustable padding controls.")
 
-# --- UI Layout Controls ---
-st.sidebar.header("Layout Settings")
-scrub_mode = st.sidebar.selectbox(
-    "Select CV Layout Style",
-    options=["Precision Mode (Name on same line)", "Column Mode (Stacked icons/Vertical block)"],
-    help="Choose Precision Mode if your name is right next to your email/phone. Choose Column Mode if contact info is in a separate sidebar or block."
-)
+# --- Interactive Sidebar Sliders ---
+st.sidebar.header("Custom Redaction Padding")
+st.sidebar.write("Adjust these sliders if you see leftover icons or sliced shapes.")
+
+left_pad = st.sidebar.slider("Left Extension (To cover icons)", min_value=0, max_value=120, value=65, step=5)
+right_pad = st.sidebar.slider("Right Extension", min_value=0, max_value=30, value=5, step=1)
+vertical_pad = st.sidebar.slider("Vertical Height Extension", min_value=0, max_value=30, value=12, step=1)
 
 uploaded_file = st.file_uploader("Choose a PDF resume", type="pdf")
 
@@ -27,8 +27,6 @@ def should_scrub_text(text):
     has_phone = bool(re.search(r'\+?\d{1,4}[-.\s]?\(?\d{1,3}?\)?[-.\s]?\d{3,4}[-.\s]?\d{3,4}', text))
     has_linkedin = "linkedin.com" in text_lower or "/in/" in text_lower
     has_generic_url = "www." in text_lower or "http" in text_lower
-    
-    # Catch location keywords explicitly for the vertical stack layout
     has_location = bool(re.search(r'\b(singapore|asia|malaysia|usa|uk|london|new york)\b', text_lower))
     
     if has_email or has_phone or has_linkedin or has_generic_url or has_location:
@@ -43,7 +41,7 @@ def should_scrub_text(text):
         
     return False
 
-def redact_pdf(file_bytes, mode):
+def redact_pdf(file_bytes, l_ext, r_ext, v_ext):
     doc = fitz.open(stream=file_bytes, filetype="pdf")
     redactions_applied = 0
     
@@ -60,37 +58,24 @@ def redact_pdf(file_bytes, mode):
                             if should_scrub_text(span_text):
                                 rect = fitz.Rect(span["bbox"])
                                 
-                                # Apply adaptive padding dimensions based on user-selected layout mode
-                                if "Precision Mode" in mode:
-                                    # Ultra-safe padding configuration for tight horizontal text lines
-                                    safe_rect = fitz.Rect(
-                                        rect.x0 - 15, 
-                                        rect.y0 - 1, 
-                                        rect.x1 + 1, 
-                                        rect.y1 + 1
-                                    )
-                                else:
-                                    # Aggressive vertical and horizontal padding to consume whole stacked icon clusters cleanly
-                                    safe_rect = fitz.Rect(
-                                        rect.x0 - 45, 
-                                        rect.y0 - 12, 
-                                        rect.x1 + 5, 
-                                        rect.y1 + 12
-                                    )
+                                # Apply the dynamic values directly from the web sliders
+                                safe_rect = fitz.Rect(
+                                    rect.x0 - l_ext, 
+                                    rect.y0 - v_ext, 
+                                    rect.x1 + r_ext, 
+                                    rect.y1 + v_ext
+                                )
                                 
                                 page.add_redact_annot(safe_rect, fill=(1, 1, 1))
                                 redactions_applied += 1
                                 
-        # Fallback pass specifically targeting orphaned vanity path fragments (e.g. /sabrinalamjingwen/)
+        # Fallback pass for layout text remnants
         page_text = page.get_text()
         custom_slugs = re.findall(r'/[a-zA-Z0-9_\-]{5,}/', page_text)
         for slug in custom_slugs:
             rect_list = page.search_for(slug)
             for rect in rect_list:
-                if "Precision Mode" in mode:
-                    safe_slug_rect = fitz.Rect(rect.x0 - 15, rect.y0 - 1, rect.x1 + 1, rect.y1 + 1)
-                else:
-                    safe_slug_rect = fitz.Rect(rect.x0 - 45, rect.y0 - 12, rect.x1 + 5, rect.y1 + 12)
+                safe_slug_rect = fitz.Rect(rect.x0 - l_ext, rect.y0 - v_ext, rect.x1 + r_ext, rect.y1 + v_ext)
                 page.add_redact_annot(safe_slug_rect, fill=(1, 1, 1))
                 redactions_applied += 1
                 
@@ -107,14 +92,15 @@ if uploaded_file is not None:
     file_bytes = uploaded_file.read()
     
     if st.button("Clean PDF Document", type="primary"):
-        with st.spinner("Processing selected layout rules..."):
+        with st.spinner("Processing custom layout rules..."):
             try:
-                scrubbed_pdf, count = redact_pdf(file_bytes, scrub_mode)
+                # Pass your custom slider variables into the function
+                scrubbed_pdf, count = redact_pdf(file_bytes, left_pad, right_pad, vertical_pad)
                 
                 if count == 0:
                     st.warning("No contact elements matched the active layout criteria.")
                 else:
-                    st.success(f"Successfully processed using {scrub_mode}!")
+                    st.success(f"Successfully processed! Adjusted boxes with {left_pad}px left margin.")
                 
                 st.download_button(
                     label="Download Redacted PDF",
