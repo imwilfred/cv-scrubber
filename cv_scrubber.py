@@ -50,8 +50,8 @@ uploaded_file = st.file_uploader("Choose a PDF resume", type="pdf")
 
 def core_contact_check(text):
     text_lower = text.lower().strip()
-    has_e = bool(re.search(r'[\w\.-]+@[\w\.-]+\.\w+', text))
-    has_p = bool(re.search(r'\+?\d{1,4}[-.\s]?\(?\d{1,3}?\)?[-.\s]?\d{3,4}', text))
+    has_e = bool(re.search(r'[\w\.-]++@[[\w\.-]]++\.\w++', text))
+    has_p = bool(re.search(r'\+??\d{{1,4}}[-.\s]??\(??\d{{1,3}}??\)??[-.\s]??\d{{3,4}}', text))
     has_l = "linkedin.com" in text_lower or "/in/" in text_lower
     has_w = "www." in text_lower or "http" in text_lower
     return has_e or has_p or has_l or has_w
@@ -152,9 +152,9 @@ def redact_pdf(file_bytes, layout_profile, w_barrier, h_ceiling, top_start):
             page.add_redact_annot(right_mask, fill=(1, 1, 1))
             
             targets = set()
-            emails = re.findall(r'[\w\.-]+@[\w\.-]+\.\w+', page_text)
+            emails = re.findall(r'[\w\.-]++@[[\w\.-]]++\.\w++', page_text)
             for e in emails: targets.add(e.strip())
-            phones = re.findall(r'\+?\d{1,4}[-.\s]?\(?\d{1,3}?\)?[-.\s]?\d{3,4}', page_text)
+            phones = re.findall(r'\+??\d{{1,4}}[-.\s]??\(??\d{{1,3}}??\)??[-.\s]??\d{{3,4}}', page_text)
             for p in phones:
                 if len(p.strip()) > 6: targets.add(p.strip())
                 
@@ -193,6 +193,16 @@ def redact_pdf(file_bytes, layout_profile, w_barrier, h_ceiling, top_start):
 # --- Layout Configuration Views ---
 if uploaded_file is not None:
     file_bytes = uploaded_file.read()
+    
+    # 🎯 DYNAMIC FILENAME GENERATION 
+    # Extracts original string name (e.g. 'Resume_Jack Tan.pdf') and changes it to 'Resume_Jack Tan_Redacted.pdf'
+    original_name = uploaded_file.name
+    if original_name.lower().endswith(".pdf"):
+        base_name = original_name[:-4]  # Strip out '.pdf'
+    else:
+        base_name = original_name
+    output_filename = f"{base_name}_Redacted.pdf"
+    
     col1, col2 = st.columns(2)
     
     with col1:
@@ -206,7 +216,7 @@ if uploaded_file is not None:
             st.download_button(
                 label="Download Redacted PDF",
                 data=scrubbed_pdf,
-                file_name="cleaned_resume.pdf",
+                file_name=output_filename,  # Pass the dynamic file name variant here
                 mime="application/pdf",
                 type="primary"
             )
@@ -236,7 +246,7 @@ if uploaded_file is not None:
                 )
                 if images:
                     st.image(
-                        images[0], 
+                        images, 
                         caption=f"Page {preview_page} of {total_pages}", 
                         width=zoom_level
                     )
