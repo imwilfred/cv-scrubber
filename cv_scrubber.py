@@ -22,6 +22,16 @@ layout_style = st.sidebar.selectbox(
 st.sidebar.markdown("---")
 st.sidebar.header("Live Mask Adjustment")
 
+# New top-margin slider to prevent eating into the green header bar
+top_boundary = st.sidebar.slider(
+    "Mask Top Boundary (Vertical Start)", 
+    min_value=0, 
+    max_value=200, 
+    value=88, 
+    step=1,
+    help="Increase this value to move the white box down if it cuts into the green banner."
+)
+
 # These sliders let you visually expand or shrink the masks with immediate screen updates
 if "Two-Column" in layout_style:
     h_limit = st.sidebar.slider("Mask Width Barrier", min_value=100, max_value=300, value=220, step=5,
@@ -37,7 +47,7 @@ else:
 
 uploaded_file = st.file_uploader("Choose a PDF resume", type="pdf")
 
-def redact_pdf(file_bytes, layout_profile, width_barrier, height_ceiling):
+def redact_pdf(file_bytes, layout_profile, width_barrier, height_ceiling, top_start):
     doc = fitz.open(stream=file_bytes, filetype="pdf")
     
     for page in doc:
@@ -47,7 +57,7 @@ def redact_pdf(file_bytes, layout_profile, width_barrier, height_ceiling):
         
         if "Standard Layout" in layout_profile:
             # --- STRATEGY 1: INTERACTIVE RIGHT QUADRANT MASK ---
-            right_mask = fitz.Rect(width_barrier, 48, page_width - 15, height_ceiling)
+            right_mask = fitz.Rect(width_barrier, top_start, page_width - 15, height_ceiling)
             page.add_redact_annot(right_mask, fill=(1, 1, 1))
             
             targets = set()
@@ -80,8 +90,8 @@ def redact_pdf(file_bytes, layout_profile, width_barrier, height_ceiling):
             # Apply redactions strictly inside the container block coordinates restricted by your sliders
             for block in page_dict.get("blocks", []):
                 bx0, by0, bx1, by1 = block["bbox"]
-                if bx1 < main_column_left and 70 < by0 < height_ceiling:
-                    sidebar_mask = fitz.Rect(0, by0 - 4, main_column_left - 10, min(by1 + 4, height_ceiling))
+                if bx1 < main_column_left and top_start < by0 < height_ceiling:
+                    sidebar_mask = fitz.Rect(0, max(by0 - 4, top_start), main_column_left - 10, min(by1 + 4, height_ceiling))
                     page.add_redact_annot(sidebar_mask, fill=(1, 1, 1))
                     
         page.apply_redactions()
@@ -94,13 +104,13 @@ def redact_pdf(file_bytes, layout_profile, width_barrier, height_ceiling):
 if uploaded_file is not None:
     file_bytes = uploaded_file.read()
     
-    # FIXED: Added the required dimension argument '2' inside the function call
     col1, col2 = st.columns(2)
     
     with col1:
         st.subheader("Control Actions")
         try:
-            scrubbed_pdf = redact_pdf(file_bytes, layout_style, h_limit, v_limit)
+            # Pass the custom top_boundary slider directly into the processing engine
+            scrubbed_pdf = redact_pdf(file_bytes, layout_style, h_limit, v_limit, top_boundary)
             st.success("Layout masks calculated successfully! Check preview on the right.")
             
             st.download_button(
