@@ -6,6 +6,25 @@ st.set_page_config(page_title="PDF CV Scrubber", layout="wide")
 st.title("Interactive PDF CV Contact Scrubber")
 st.write("Upload your resume and use manual sliders to position masks perfectly.")
 
+# --- THE FOOLPROOF EXTENSION REMOVER: Hides the native layout text string perfectly ---
+st.markdown(
+    """
+    <style>
+    /* Completely deletes the subtitle row inside the file box container */
+    div[data-testid="stFileUploaderSubcaption"] {
+        display: none !important;
+        height: 0 !important;
+        visibility: hidden !important;
+    }
+    /* Restores breathing room under the upload action card container */
+    div[data-testid="stFileUploader"] {
+        margin-bottom: 20px;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
 # --- TRACK FILE UPLOADER UNIQUE KEYS AND SLIDER DEFAULTS IN SESSION STATE ---
 if "uploader_key" not in st.session_state: st.session_state.uploader_key = 0
 if "top_boundary_val" not in st.session_state: st.session_state.top_boundary_val = 30
@@ -39,27 +58,12 @@ st.info(
     "5. 📥 **Save:** Click *Download Updated PDF* to save your finalized copy!"
 )
 
-st.markdown("Upload the PDF Resume")
-
-# --- FIXED SECTION: Custom Horizontal Layout Column Alignment ---
-# Splitting the row into a tight grid column configuration
-btn_col, txt_col = st.columns([1, 4])
-
-with btn_col:
-    # label_visibility="collapsed" forcefully strips out Streamlit's default file extensions label row
-    uploaded_file = st.file_uploader(
-        "Upload the PDF Resume Label", 
-        type=["pdf", "docx", "doc"], 
-        key=f"pdf_uploader_{st.session_state.uploader_key}",
-        label_visibility="collapsed"
-    )
-
-with txt_col:
-    # Safely renders your clean manual label right beside the visual upload block
-    st.markdown(
-        "<div style='padding-top: 10px; color: #808495; font-size: 14px;'>200MB per file</div>", 
-        unsafe_allow_html=True
-    )
+# Rendered cleanly using standard Markdown right above the layout component card
+uploaded_file = st.file_uploader(
+    "Upload the PDF Resume (Max 200MB)", 
+    type=["pdf", "docx", "doc"], 
+    key=f"pdf_uploader_{st.session_state.uploader_key}"
+)
 
 # --- CLEANED DATA ASSURANCES CARD WITH SEPARATE BREAK LINES ---
 st.success(
