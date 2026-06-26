@@ -45,13 +45,13 @@ uploaded_file = st.file_uploader(
     key=f"pdf_uploader_{st.session_state.uploader_key}"
 )
 
-# --- BUILT-IN ON-SCREEN DATA ASSURANCES CARD ---
+# --- CLEANED DATA ASSURANCES CARD ---
 st.success(
     "🔒 **Data Privacy & Security Guarantee**\n\n"
-    "• **In-Memory Processing Only:** Resumes are processed purely within temporary, volatile server RAM [INDEX]. This platform contains **no databases, logs, or file storage disks**.\n"
+    "• **In-Memory Processing Only:** Resumes are processed purely within temporary, volatile server RAM. This platform contains **no databases, logs, or file storage disks**.\n"
     "• **Instant Destruction:** The moment you click the *Clear button* or close your browser tab, your document bytes are **permanently erased and destroyed forever**.\n"
-    "• **100% Isolated Sessions:** Each user session is sandboxed in real-time. Colleagues using the app simultaneously can never access or view your uploaded files [INDEX].\n"
-    "• **Encrypted Transit:** All files are protected with bank-grade HTTPS encryption during data transfer [INDEX]."
+    "• **100% Isolated Sessions:** Each user session is sandboxed in real-time. Colleagues using the app simultaneously can never access or view your uploaded files.\n"
+    "• **Encrypted Transit:** All files are protected with bank-grade HTTPS encryption during data transfer."
 )
 
 if uploaded_file is not None and uploaded_file.name.lower().endswith((".docx", ".doc")):
