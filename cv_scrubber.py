@@ -6,7 +6,8 @@ st.set_page_config(page_title="PDF CV Scrubber", layout="wide")
 st.title("Interactive PDF CV Contact Scrubber")
 st.write("Upload your resume and use manual sliders to position masks perfectly.")
 
-# Initialize session states safely with your target defaults
+# --- TRACK FILE UPLOADER UNIQUE KEYS IN SESSION STATE ---
+if "uploader_key" not in st.session_state: st.session_state.uploader_key = 0
 if "top_boundary_val" not in st.session_state: st.session_state.top_boundary_val = 30
 if "h_limit_val" not in st.session_state: st.session_state.h_limit_val = 140
 if "v_limit_val" not in st.session_state: st.session_state.v_limit_val = 115
@@ -27,7 +28,12 @@ if layout_style != st.session_state.active_layout:
     else: 
         st.session_state.top_boundary_val, st.session_state.h_limit_val, st.session_state.v_limit_val = 30, 140, 115
 
-uploaded_file = st.file_uploader("Upload the PDF Resume", type=["pdf", "docx", "doc"])
+# FIXED: Added a dynamic session key loop parameter here to force widget destruction on clean
+uploaded_file = st.file_uploader(
+    "Upload the PDF Resume", 
+    type=["pdf", "docx", "doc"], 
+    key=f"pdf_uploader_{st.session_state.uploader_key}"
+)
 
 if uploaded_file is not None and uploaded_file.name.lower().endswith((".docx", ".doc")):
     st.error("⚠️ Invalid File Type Detected!")
@@ -54,13 +60,11 @@ st.session_state.h_limit_val, st.session_state.v_limit_val = h_limit, v_limit
 st.sidebar.markdown("---")
 zoom_level = st.sidebar.slider("Document Zoom Level", 300, 1500, 900, 25)
 
-# --- CORE REDACTION ENGINE: Direct manual layout drawing matrix ---
 def redact_pdf(f_bytes, layout_profile, w_barrier, h_ceiling, top_start, mask_color):
     doc = fitz.open(stream=f_bytes, filetype="pdf")
     for page in doc:
         page_width = page.rect.width
         if "Standard Layout" in layout_profile:
-            # Unbreakable target box: locks cleanly onto your custom live slider configurations
             mask_box = fitz.Rect(w_barrier, top_start, page_width - 15, h_ceiling)
             page.add_redact_annot(mask_box, fill=mask_color)
         else:
@@ -80,7 +84,6 @@ if uploaded_file is not None and uploaded_file.name.lower().endswith(".pdf"):
     with col1:
         st.subheader("Control Actions")
         try:
-            # Passes all slider dimensions directly into the drawing engine cleanly
             scrubbed_pdf, total_pages = redact_pdf(file_bytes, layout_style, h_limit, v_limit, top_boundary, chosen_color)
             st.success("Calculated successfully!")
             st.download_button(label="Download Redacted PDF", data=scrubbed_pdf, file_name=output_filename, mime="application/pdf", type="primary")
@@ -90,7 +93,9 @@ if uploaded_file is not None and uploaded_file.name.lower().endswith(".pdf"):
             scrubbed_pdf, total_pages, preview_page = None, 1, 1
             
     st.markdown("---")
+    # FIXED CHANNEL: Incrementing the key instantly clears the widget's internal state
     if st.button("🧹 Clear Current File", use_container_width=True): 
+        st.session_state.uploader_key += 1
         st.rerun()
         
     with col2:
