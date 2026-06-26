@@ -1,33 +1,10 @@
 import streamlit as st
 import fitz, io
-import streamlit.components.v1 as components
 from pdf2image import convert_from_bytes
 
 st.set_page_config(page_title="PDF CV Scrubber", layout="wide")
 st.title("Interactive PDF CV Contact Scrubber")
 st.write("Upload your resume and use manual sliders to position masks perfectly.")
-
-# --- THE ABSOLUTE SHADOW DOM OVERRIDE: Destroys the extension text line forever ---
-components.html(
-    """
-    <script>
-    function destroyStickyCaption() {
-        const uploaders = window.parent.document.querySelectorAll('[data-testid="stFileUploader"]');
-        uploaders.forEach(uploader => {
-            // Penetrates the internal layout wrappers directly to wipe out the specific row text
-            const labelCaption = uploader.querySelector('[data-testid="stWidgetLabel-caption"]');
-            if (labelCaption) { labelCaption.style.setProperty('display', 'none', 'important'); }
-            const subcaption = uploader.querySelector('[data-testid="stFileUploaderSubcaption"]');
-            if (subcaption) { subcaption.style.setProperty('display', 'none', 'important'); }
-        });
-    }
-    // Runs immediately and watches for any system refreshes to maintain clean styling
-    setInterval(destroyStickyCaption, 100);
-    destroyStickyCaption();
-    </script>
-    """,
-    height=0
-)
 
 # --- TRACK FILE UPLOADER UNIQUE KEYS AND SLIDER DEFAULTS IN SESSION STATE ---
 if "uploader_key" not in st.session_state: st.session_state.uploader_key = 0
@@ -62,23 +39,25 @@ st.info(
     "5. 📥 **Save:** Click *Download Updated PDF* to save your finalized copy!"
 )
 
-# FIXED: Main header label text wrapped in bold formatting asterisks
+# 1. FIXED: Main header label text wrapped in bold formatting asterisks
 st.markdown("**Upload the PDF Resume (Max 200MB)**")
 
-uploaded_file = st.file_uploader(
-    "Upload Label Title Hidden", 
-    type=["pdf", "docx", "doc"], 
-    key=f"pdf_uploader_{st.session_state.uploader_key}",
-    label_visibility="collapsed"
-)
+# 2. FIXED: Wrapped inside an isolated popover container to hide the sticky subcaption strings
+with st.popover("📤 Click Here to Upload File", use_container_width=True):
+    uploaded_file = st.file_uploader(
+        "Upload Area", 
+        type=["pdf", "docx", "doc"], 
+        key=f"pdf_uploader_{st.session_state.uploader_key}",
+        label_visibility="collapsed"
+    )
 
-# FIXED: Removed double newline breaks to bring the paragraph line spacing closer together
+# 3. FIXED: Markdown list block syntax forces perfect line-by-line separation with zero clutter
 st.success(
     "🔒 **Data Privacy & Security Guarantee**\n\n"
-    "• **In-Memory Processing Only:** Resumes are processed purely within temporary, volatile server RAM. This platform contains **no databases, logs, or file storage disks**.\n"
-    "• **Instant Destruction:** The moment you click the *Clear button* or close your browser tab, your document bytes are **permanently erased and destroyed forever**.\n"
-    "• **100% Isolated Sessions:** Each user session is sandboxed in real-time. Colleagues using the app simultaneously can never access or view your uploaded files.\n"
-    "• **Encrypted Transit:** All files are protected with bank-grade HTTPS encryption during data transfer."
+    "* **In-Memory Processing Only:** Resumes are processed purely within temporary, volatile server RAM. This platform contains **no databases, logs, or file storage disks**.\n"
+    "* **Instant Destruction:** The moment you click the *Clear button* or close your browser tab, your document bytes are **permanently erased and destroyed forever**.\n"
+    "* **100% Isolated Sessions:** Each user session is sandboxed in real-time. Colleagues using the app simultaneously can never access or view your uploaded files.\n"
+    "* **Encrypted Transit:** All files are protected with bank-grade HTTPS encryption during data transfer."
 )
 
 if uploaded_file is not None and uploaded_file.name.lower().endswith((".docx", ".doc")):
