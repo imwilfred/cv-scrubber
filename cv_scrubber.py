@@ -56,15 +56,17 @@ if uploaded_file is not None and uploaded_file.name.lower().endswith(".pdf"):
 
 st.sidebar.markdown("---")
 st.sidebar.header("Live Mask Adjustment")
-top_boundary = st.sidebar.slider("Mask Top Boundary (Vertical Start)", 0, 200, st.session_state.top_boundary_val, 1, key="top_slider")
+
+# FIXED: Linked keys directly to the uploader_key step value to force visual widget resetting
+top_boundary = st.sidebar.slider("Mask Top Boundary (Vertical Start)", 0, 200, st.session_state.top_boundary_val, 1, key=f"top_slider_{st.session_state.uploader_key}")
 st.session_state.top_boundary_val = top_boundary
 
 if "Two-Column" in layout_style:
-    h_limit = st.sidebar.slider("Mask Width Barrier", 100, 300, st.session_state.h_limit_val, 1, key="h_slider_two")
-    v_limit = st.sidebar.slider("Mask Height Ceiling", 100, 500, st.session_state.v_limit_val, 1, key="v_slider_two")
+    h_limit = st.sidebar.slider("Mask Width Barrier", 100, 300, st.session_state.h_limit_val, 1, key=f"h_two_{st.session_state.uploader_key}")
+    v_limit = st.sidebar.slider("Mask Height Ceiling", 100, 500, st.session_state.v_limit_val, 1, key=f"v_two_{st.session_state.uploader_key}")
 else:
-    h_limit = st.sidebar.slider("Right Mask Start Width", 10, 500, st.session_state.h_limit_val, 1, key="h_slider_std")
-    v_limit = st.sidebar.slider("Right Mask Vertical Limit", 10, 500, st.session_state.v_limit_val, 1, key="v_slider_std")
+    h_limit = st.sidebar.slider("Right Mask Start Width", 10, 500, st.session_state.h_limit_val, 1, key=f"h_std_{st.session_state.uploader_key}")
+    v_limit = st.sidebar.slider("Right Mask Vertical Limit", 10, 500, st.session_state.v_limit_val, 1, key=f"v_std_{st.session_state.uploader_key}")
 st.session_state.h_limit_val, st.session_state.v_limit_val = h_limit, v_limit
 
 st.sidebar.markdown("---")
@@ -103,7 +105,7 @@ if uploaded_file is not None and uploaded_file.name.lower().endswith(".pdf"):
             scrubbed_pdf, total_pages, preview_page = None, 1, 1
             
     st.markdown("---")
-    # --- AUTO-RESET VALS CHANNEL ---
+    # --- FIXED AUTO-RESET STRUCTURAL LAYER ---
     if st.button("🧹 Clear Current File", use_container_width=True): 
         st.session_state.uploader_key += 1
         st.session_state.top_boundary_val = 30
