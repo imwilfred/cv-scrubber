@@ -6,19 +6,16 @@ st.set_page_config(page_title="PDF CV Scrubber", layout="wide")
 st.title("Interactive PDF CV Contact Scrubber")
 st.write("Upload your resume and use manual sliders to position masks perfectly.")
 
-# --- THE FOOLPROOF EXTENSION REMOVER: Hides the native layout text string perfectly ---
+# --- THE PERMANENT FIX: Deletes the entire caption text row completely ---
 st.markdown(
     """
     <style>
-    /* Completely deletes the subtitle row inside the file box container */
+    /* Targets the exact internal subcaption box and completely removes it */
+    div[data-testid="stFileUploader"] small[data-testid="stWidgetLabel-caption"],
     div[data-testid="stFileUploaderSubcaption"] {
         display: none !important;
         height: 0 !important;
         visibility: hidden !important;
-    }
-    /* Restores breathing room under the upload action card container */
-    div[data-testid="stFileUploader"] {
-        margin-bottom: 20px;
     }
     </style>
     """,
@@ -58,14 +55,14 @@ st.info(
     "5. 📥 **Save:** Click *Download Updated PDF* to save your finalized copy!"
 )
 
-# Rendered cleanly using standard Markdown right above the layout component card
+# Rendered cleanly with the Max 200MB note in the main label
 uploaded_file = st.file_uploader(
     "Upload the PDF Resume (Max 200MB)", 
     type=["pdf", "docx", "doc"], 
     key=f"pdf_uploader_{st.session_state.uploader_key}"
 )
 
-# --- CLEANED DATA ASSURANCES CARD WITH SEPARATE BREAK LINES ---
+# --- DATA ASSURANCES CARD ---
 st.success(
     "🔒 **Data Privacy & Security Guarantee**\n\n"
     "• **In-Memory Processing Only:** Resumes are processed purely within temporary, volatile server RAM. This platform contains **no databases, logs, or file storage disks**.\n\n"
