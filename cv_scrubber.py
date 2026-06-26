@@ -6,7 +6,6 @@ st.set_page_config(page_title="PDF CV Scrubber", layout="wide")
 st.title("Interactive PDF CV Contact Scrubber")
 st.write("Upload your resume and use manual sliders to position masks perfectly.")
 
-# --- TRACK FILE UPLOADER UNIQUE KEYS AND SLIDER DEFAULTS IN SESSION STATE ---
 if "uploader_key" not in st.session_state: st.session_state.uploader_key = 0
 if "top_boundary_val" not in st.session_state: st.session_state.top_boundary_val = 30
 if "h_limit_val" not in st.session_state: st.session_state.h_limit_val = 140
@@ -28,7 +27,6 @@ if layout_style != st.session_state.active_layout:
     else: 
         st.session_state.top_boundary_val, st.session_state.h_limit_val, st.session_state.v_limit_val = 30, 140, 115
 
-# --- TEAM QUICK START GUIDE ALERT BOX ---
 st.info(
     "💡 **Quick Start Guide**\n\n"
     "Please follow these simple steps:\n\n"
@@ -39,10 +37,8 @@ st.info(
     "5. 📥 **Save:** Click *Download Updated PDF* to save your finalized copy!"
 )
 
-# 1. FIXED: Main header label text wrapped in bold formatting asterisks
 st.markdown("**Upload the PDF Resume (Max 200MB)**")
 
-# 2. FIXED: Wrapped inside an isolated popover container to hide the sticky subcaption strings
 with st.popover("📤 Click Here to Upload File", use_container_width=True):
     uploaded_file = st.file_uploader(
         "Upload Area", 
@@ -51,7 +47,6 @@ with st.popover("📤 Click Here to Upload File", use_container_width=True):
         label_visibility="collapsed"
     )
 
-# 3. FIXED: Markdown list block syntax forces perfect line-by-line separation with zero clutter
 st.success(
     "🔒 **Data Privacy & Security Guarantee**\n\n"
     "* **In-Memory Processing Only:** Resumes are processed purely within temporary, volatile server RAM. This platform contains **no databases, logs, or file storage disks**.\n"
@@ -60,18 +55,22 @@ st.success(
     "* **Encrypted Transit:** All files are protected with bank-grade HTTPS encryption during data transfer."
 )
 
-if uploaded_file is not None and uploaded_file.name.lower().endswith((".docx", ".doc")):
-    st.error("⚠️ Invalid File Type Detected!")
-    st.markdown("Our CV Scrubber can only process **PDF files**.\n\n**How to convert your Word document:**\n1. Open file in Word.\n2. Click **File** -> **Save As**.\n3. Select **PDF (*.pdf)** from format list.\n4. Upload new PDF here.")
-    st.stop()
+# --- NON-BLOCKING VALIDATION GATEWAY ENGINE ---
+is_valid_file = True
+file_bytes = None
 
-if uploaded_file is not None and uploaded_file.name.lower().endswith(".pdf"):
-    file_bytes = uploaded_file.read()
-    uploaded_file.seek(0)
+if uploaded_file is not None:
+    filename_lower = uploaded_file.name.lower()
+    if filename_lower.endswith((".docx", ".doc")):
+        st.error("⚠️ Invalid File Type Detected!")
+        st.markdown("Our CV Scrubber can only process **PDF files**.\n\n**How to convert your Word document:**\n1. Open file in Word.\n2. Click **File** -> **Save As**.\n3. Select **PDF (*.pdf)** from format list.\n4. Upload new PDF here.")
+        is_valid_file = False
+    elif filename_lower.endswith(".pdf"):
+        file_bytes = uploaded_file.read()
+        uploaded_file.seek(0)
 
 st.sidebar.markdown("---")
 st.sidebar.header("Live Mask Adjustment")
-
 top_boundary = st.sidebar.slider("Mask Top Boundary (Vertical Start)", 0, 200, st.session_state.top_boundary_val, 1, key=f"top_slider_{st.session_state.uploader_key}")
 st.session_state.top_boundary_val = top_boundary
 
@@ -110,7 +109,8 @@ def redact_pdf(f_bytes, layout_profile, w_barrier, h_ceiling, top_start, mask_co
     doc.close()
     return output_buffer.getvalue(), total_pages
 
-if uploaded_file is not None and uploaded_file.name.lower().endswith(".pdf"):
+# Only run layout generator calculations if a valid PDF document exists
+if uploaded_file is not None and is_valid_file and file_bytes is not None:
     base_name = uploaded_file.name[:-4]
     output_filename = f"{base_name}_Updated.pdf"
     col1, col2 = st.columns(2)
@@ -119,28 +119,12 @@ if uploaded_file is not None and uploaded_file.name.lower().endswith(".pdf"):
         try:
             scrubbed_pdf, total_pages = redact_pdf(file_bytes, layout_style, h_limit, v_limit, top_boundary, chosen_color)
             st.success("Calculated successfully!")
-            
-            st.download_button(
-                label="📥 Download Updated PDF", 
-                data=scrubbed_pdf, 
-                file_name=output_filename, 
-                mime="application/pdf", 
-                type="primary"
-            )
-            
+            st.download_button(label="📥 Download Updated PDF", data=scrubbed_pdf, file_name=output_filename, mime="application/pdf", type="primary")
             preview_page = st.selectbox("Flip Preview Page:", options=list(range(1, total_pages + 1)), index=0) if total_pages > 1 else 1
         except Exception as e: 
             st.error(f"Error compiling document: {e}")
             scrubbed_pdf, total_pages, preview_page = None, 1, 1
             
-    st.markdown("---")
-    if st.button("🧹 Clear Current File", use_container_width=True): 
-        st.session_state.uploader_key += 1
-        st.session_state.top_boundary_val = 30
-        st.session_state.h_limit_val = 140
-        st.session_state.v_limit_val = 115
-        st.rerun()
-        
     with col2:
         st.subheader("Live Document Preview")
         if scrubbed_pdf:
@@ -149,3 +133,12 @@ if uploaded_file is not None and uploaded_file.name.lower().endswith(".pdf"):
                 if images: st.image(images, caption=f"Page {preview_page} of {total_pages}", width=zoom_level)
             except Exception as img_err: 
                 st.error(f"Visual preview error: {img_err}")
+
+# This section stays completely active on the webpage grid loop even during a type warning
+st.markdown("---")
+if st.button("🧹 Clear Current File", use_container_width=True): 
+    st.session_state.uploader_key += 1
+    st.session_state.top_boundary_val = 30
+    st.session_state.h_limit_val = 140
+    st.session_state.v_limit_val = 115
+    st.rerun()
