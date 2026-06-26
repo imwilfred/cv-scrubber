@@ -65,7 +65,7 @@ if "Two-Column" in layout_style:
     v_limit = st.sidebar.slider("Mask Height Ceiling", 100, 500, st.session_state.v_limit_val, 1, key=f"v_two_{st.session_state.uploader_key}")
 else:
     h_limit = st.sidebar.slider("Right Mask Start Width", 10, 500, st.session_state.h_limit_val, 1, key=f"h_std_{st.session_state.uploader_key}")
-    v_limit = st.sidebar.slider("Right Mask Vertical Limit", 10, 500, st.session_state.v_limit_val, 1, key=f"v_std_{st.session_state.uploader_key}")
+    v_limit = st.sidebar.slider("Right Mask Vertical Limit", 10, 500, st.session_state.v_limit_val, 1, key="v_std")
 st.session_state.h_limit_val, st.session_state.v_limit_val = h_limit, v_limit
 
 st.sidebar.markdown("---")
@@ -82,6 +82,21 @@ def redact_pdf(f_bytes, layout_profile, w_barrier, h_ceiling, top_start, mask_co
             sidebar_mask = fitz.Rect(0, top_start, w_barrier, h_ceiling)
             page.add_redact_annot(sidebar_mask, fill=mask_color)
         page.apply_redactions()
+        
+    # --- FIXED AUTOMATIC METADATA STRIPPER PASSTHROUGH ---
+    # Overwrites all background file properties with completely blank strings
+    clean_meta = {
+        "author": "",
+        "title": "",
+        "subject": "",
+        "keywords": "",
+        "creator": "",
+        "producer": "",
+        "creationDate": "",
+        "modDate": ""
+    }
+    doc.set_metadata(clean_meta)
+    
     output_buffer = io.BytesIO()
     doc.save(output_buffer, garbage=4, deflate=True)
     total_pages = len(doc)
@@ -98,7 +113,6 @@ if uploaded_file is not None and uploaded_file.name.lower().endswith(".pdf"):
             scrubbed_pdf, total_pages = redact_pdf(file_bytes, layout_style, h_limit, v_limit, top_boundary, chosen_color)
             st.success("Calculated successfully!")
             
-            # FIXED CHANGED: Re-labeled the button text securely to match the "_Updated" goal
             st.download_button(
                 label="📥 Download Updated PDF", 
                 data=scrubbed_pdf, 
