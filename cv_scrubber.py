@@ -57,7 +57,6 @@ if uploaded_file is not None and uploaded_file.name.lower().endswith(".pdf"):
 st.sidebar.markdown("---")
 st.sidebar.header("Live Mask Adjustment")
 
-# FIXED: Linked keys directly to the uploader_key step value to force visual widget resetting
 top_boundary = st.sidebar.slider("Mask Top Boundary (Vertical Start)", 0, 200, st.session_state.top_boundary_val, 1, key=f"top_slider_{st.session_state.uploader_key}")
 st.session_state.top_boundary_val = top_boundary
 
@@ -91,7 +90,8 @@ def redact_pdf(f_bytes, layout_profile, w_barrier, h_ceiling, top_start, mask_co
 
 if uploaded_file is not None and uploaded_file.name.lower().endswith(".pdf"):
     base_name = uploaded_file.name[:-4]
-    output_filename = f"{base_name}_Redacted.pdf"
+    # FIXED CHANGED: Dynamically appends '_Updated.pdf' seamlessly instead of '_Redacted'
+    output_filename = f"{base_name}_Updated.pdf"
     col1, col2 = st.columns(2)
     with col1:
         st.subheader("Control Actions")
@@ -105,7 +105,6 @@ if uploaded_file is not None and uploaded_file.name.lower().endswith(".pdf"):
             scrubbed_pdf, total_pages, preview_page = None, 1, 1
             
     st.markdown("---")
-    # --- FIXED AUTO-RESET STRUCTURAL LAYER ---
     if st.button("🧹 Clear Current File", use_container_width=True): 
         st.session_state.uploader_key += 1
         st.session_state.top_boundary_val = 30
