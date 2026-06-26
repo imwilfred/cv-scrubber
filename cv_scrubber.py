@@ -6,7 +6,7 @@ st.set_page_config(page_title="PDF CV Scrubber", layout="wide")
 st.title("Interactive PDF CV Contact Scrubber")
 st.write("Upload your resume and use manual sliders to position masks perfectly.")
 
-# --- TRACK FILE UPLOADER UNIQUE KEYS IN SESSION STATE ---
+# --- TRACK FILE UPLOADER UNIQUE KEYS AND SLIDER DEFAULTS IN SESSION STATE ---
 if "uploader_key" not in st.session_state: st.session_state.uploader_key = 0
 if "top_boundary_val" not in st.session_state: st.session_state.top_boundary_val = 30
 if "h_limit_val" not in st.session_state: st.session_state.h_limit_val = 140
@@ -28,7 +28,17 @@ if layout_style != st.session_state.active_layout:
     else: 
         st.session_state.top_boundary_val, st.session_state.h_limit_val, st.session_state.v_limit_val = 30, 140, 115
 
-# FIXED: Added a dynamic session key loop parameter here to force widget destruction on clean
+# --- TEAM QUICK START GUIDE ALERT BOX ---
+st.info(
+    "💡 **Quick Start Guide**\n\n"
+    "Welcome to the team CV Scrubber! Please follow these simple steps:\n\n"
+    "1. 📄 **Convert First:** Ensure your resume is saved as a **PDF file** before uploading.\n"
+    "2. 🔄 **Choose Layout:** Select *Standard* if contact text sits on the right, or *Two-Column* for left sidebars.\n"
+    "3. 🎛️ **Adjust Sliders:** Move the controls to align the redaction box over your data while keeping your name safe.\n"
+    "4. ⬛ **Change Style:** Check the aesthetics box to switch between *White-out blocks* and *Solid Black Bars*.\n"
+    "5. 📥 **Save:** Click *Download Redacted PDF* to save your finalized copy!"
+)
+
 uploaded_file = st.file_uploader(
     "Upload the PDF Resume", 
     type=["pdf", "docx", "doc"], 
@@ -93,9 +103,12 @@ if uploaded_file is not None and uploaded_file.name.lower().endswith(".pdf"):
             scrubbed_pdf, total_pages, preview_page = None, 1, 1
             
     st.markdown("---")
-    # FIXED CHANNEL: Incrementing the key instantly clears the widget's internal state
+    # --- AUTO-RESET VALS CHANNEL ---
     if st.button("🧹 Clear Current File", use_container_width=True): 
         st.session_state.uploader_key += 1
+        st.session_state.top_boundary_val = 30
+        st.session_state.h_limit_val = 140
+        st.session_state.v_limit_val = 115
         st.rerun()
         
     with col2:
