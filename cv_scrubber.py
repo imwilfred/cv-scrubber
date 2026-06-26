@@ -39,11 +39,27 @@ st.info(
     "5. 📥 **Save:** Click *Download Updated PDF* to save your finalized copy!"
 )
 
-uploaded_file = st.file_uploader(
-    "Upload the PDF Resume", 
-    type=["pdf", "docx", "doc"], 
-    key=f"pdf_uploader_{st.session_state.uploader_key}"
-)
+st.markdown("Upload the PDF Resume")
+
+# --- FIXED SECTION: Custom Horizontal Layout Column Alignment ---
+# Splitting the row into a tight grid column configuration
+btn_col, txt_col = st.columns([1, 4])
+
+with btn_col:
+    # label_visibility="collapsed" forcefully strips out Streamlit's default file extensions label row
+    uploaded_file = st.file_uploader(
+        "Upload the PDF Resume Label", 
+        type=["pdf", "docx", "doc"], 
+        key=f"pdf_uploader_{st.session_state.uploader_key}",
+        label_visibility="collapsed"
+    )
+
+with txt_col:
+    # Safely renders your clean manual label right beside the visual upload block
+    st.markdown(
+        "<div style='padding-top: 10px; color: #808495; font-size: 14px;'>200MB per file</div>", 
+        unsafe_allow_html=True
+    )
 
 # --- CLEANED DATA ASSURANCES CARD WITH SEPARATE BREAK LINES ---
 st.success(
