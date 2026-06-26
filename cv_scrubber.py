@@ -31,7 +31,7 @@ if layout_style != st.session_state.active_layout:
 # --- TEAM QUICK START GUIDE ALERT BOX ---
 st.info(
     "💡 **Quick Start Guide**\n\n"
-    "Welcome to the team CV Scrubber! Please follow these simple steps:\n\n"
+    "Please follow these simple steps:\n\n"
     "1. 📄 **Convert First:** Ensure your resume is saved as a **PDF file** before uploading.\n"
     "2. 🔄 **Choose Layout:** Select *Standard* if contact text sits on the right, or *Two-Column* for left sidebars.\n"
     "3. 🎛️ **Adjust Sliders:** Move the controls to align the redaction box over your data while keeping your name safe.\n"
@@ -90,7 +90,6 @@ def redact_pdf(f_bytes, layout_profile, w_barrier, h_ceiling, top_start, mask_co
 
 if uploaded_file is not None and uploaded_file.name.lower().endswith(".pdf"):
     base_name = uploaded_file.name[:-4]
-    # FIXED CHANGED: Dynamically appends '_Updated.pdf' seamlessly instead of '_Redacted'
     output_filename = f"{base_name}_Updated.pdf"
     col1, col2 = st.columns(2)
     with col1:
