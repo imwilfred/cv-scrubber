@@ -36,7 +36,7 @@ st.info(
     "2. 🔄 **Choose Layout:** Select *Standard* if contact text sits on the right, or *Two-Column* for left sidebars.\n"
     "3. 🎛️ **Adjust Sliders:** Move the controls to align the redaction box over your data while keeping your name safe.\n"
     "4. ⬛ **Change Style:** Check the aesthetics box to switch between *White-out blocks* and *Solid Black Bars*.\n"
-    "5. 📥 **Save:** Click *Download Redacted PDF* to save your finalized copy!"
+    "5. 📥 **Save:** Click *Download Updated PDF* to save your finalized copy!"
 )
 
 uploaded_file = st.file_uploader(
@@ -97,7 +97,16 @@ if uploaded_file is not None and uploaded_file.name.lower().endswith(".pdf"):
         try:
             scrubbed_pdf, total_pages = redact_pdf(file_bytes, layout_style, h_limit, v_limit, top_boundary, chosen_color)
             st.success("Calculated successfully!")
-            st.download_button(label="Download Redacted PDF", data=scrubbed_pdf, file_name=output_filename, mime="application/pdf", type="primary")
+            
+            # FIXED CHANGED: Re-labeled the button text securely to match the "_Updated" goal
+            st.download_button(
+                label="📥 Download Updated PDF", 
+                data=scrubbed_pdf, 
+                file_name=output_filename, 
+                mime="application/pdf", 
+                type="primary"
+            )
+            
             preview_page = st.selectbox("Flip Preview Page:", options=list(range(1, total_pages + 1)), index=0) if total_pages > 1 else 1
         except Exception as e: 
             st.error(f"Error compiling document: {e}")
