@@ -6,22 +6,6 @@ st.set_page_config(page_title="PDF CV Scrubber", layout="wide")
 st.title("Interactive PDF CV Contact Scrubber")
 st.write("Upload your resume and use manual sliders to position masks perfectly.")
 
-# --- THE PERMANENT FIX: Deletes the entire caption text row completely ---
-st.markdown(
-    """
-    <style>
-    /* Targets the exact internal subcaption box and completely removes it */
-    div[data-testid="stFileUploader"] small[data-testid="stWidgetLabel-caption"],
-    div[data-testid="stFileUploaderSubcaption"] {
-        display: none !important;
-        height: 0 !important;
-        visibility: hidden !important;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True
-)
-
 # --- TRACK FILE UPLOADER UNIQUE KEYS AND SLIDER DEFAULTS IN SESSION STATE ---
 if "uploader_key" not in st.session_state: st.session_state.uploader_key = 0
 if "top_boundary_val" not in st.session_state: st.session_state.top_boundary_val = 30
@@ -55,14 +39,18 @@ st.info(
     "5. 📥 **Save:** Click *Download Updated PDF* to save your finalized copy!"
 )
 
-# Rendered cleanly with the Max 200MB note in the main label
+# --- CLEAN INTERFACE LAYER: Replaces the native widget label completely ---
+st.markdown("**Upload the PDF Resume (Max 200MB)**")
+
+# FIXED: label_visibility="collapsed" forces Streamlit to permanently delete its built-in text rows
 uploaded_file = st.file_uploader(
-    "Upload the PDF Resume (Max 200MB)", 
+    "Hidden Label Title", 
     type=["pdf", "docx", "doc"], 
-    key=f"pdf_uploader_{st.session_state.uploader_key}"
+    key=f"pdf_uploader_{st.session_state.uploader_key}",
+    label_visibility="collapsed"
 )
 
-# --- DATA ASSURANCES CARD ---
+# --- DATA PRIVACY ASSURANCES CARD ---
 st.success(
     "🔒 **Data Privacy & Security Guarantee**\n\n"
     "• **In-Memory Processing Only:** Resumes are processed purely within temporary, volatile server RAM. This platform contains **no databases, logs, or file storage disks**.\n\n"
