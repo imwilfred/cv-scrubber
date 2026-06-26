@@ -6,7 +6,26 @@ st.set_page_config(page_title="PDF CV Scrubber", layout="wide")
 st.title("Interactive PDF CV Contact Scrubber")
 st.write("Upload your resume and use manual sliders to position masks perfectly.")
 
-# --- TRACK FILE UPLOADER UNIQUE KEYS AND SLIDER DEFAULTS IN SESSION STATE ---
+# --- THE UNBREAKABLE CSS OVERRIDE: Targets any small text element inside the file widget ---
+st.markdown(
+    """
+    <style>
+    /* Direct global wipe of any subtitle helper captions inside the uploader area */
+    [data-testid="stFileUploader"] label + div + div,
+    [data-testid="stFileUploader"] small,
+    [data-testid="stFileUploaderSubcaption"],
+    .uploadedFile small {
+        display: none !important;
+        font-size: 0 !important;
+        height: 0 !important;
+        visibility: hidden !important;
+        opacity: 0 !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
 if "uploader_key" not in st.session_state: st.session_state.uploader_key = 0
 if "top_boundary_val" not in st.session_state: st.session_state.top_boundary_val = 30
 if "h_limit_val" not in st.session_state: st.session_state.h_limit_val = 140
@@ -28,7 +47,6 @@ if layout_style != st.session_state.active_layout:
     else: 
         st.session_state.top_boundary_val, st.session_state.h_limit_val, st.session_state.v_limit_val = 30, 140, 115
 
-# --- TEAM QUICK START GUIDE ALERT BOX ---
 st.info(
     "💡 **Quick Start Guide**\n\n"
     "Please follow these simple steps:\n\n"
@@ -39,18 +57,14 @@ st.info(
     "5. 📥 **Save:** Click *Download Updated PDF* to save your finalized copy!"
 )
 
-# --- CLEAN INTERFACE LAYER: Replaces the native widget label completely ---
-st.markdown("**Upload the PDF Resume (Max 200MB)**")
-
-# FIXED: label_visibility="collapsed" forces Streamlit to permanently delete its built-in text rows
+# Rendered cleanly using standard Markdown right above the widget element card
 uploaded_file = st.file_uploader(
-    "Hidden Label Title", 
+    "Upload the PDF Resume (Max 200MB)", 
     type=["pdf", "docx", "doc"], 
     key=f"pdf_uploader_{st.session_state.uploader_key}",
-    label_visibility="collapsed"
+    label_visibility="visible"
 )
 
-# --- DATA PRIVACY ASSURANCES CARD ---
 st.success(
     "🔒 **Data Privacy & Security Guarantee**\n\n"
     "• **In-Memory Processing Only:** Resumes are processed purely within temporary, volatile server RAM. This platform contains **no databases, logs, or file storage disks**.\n\n"
