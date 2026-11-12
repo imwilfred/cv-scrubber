@@ -3,6 +3,21 @@ import fitz, io
 from pdf2image import convert_from_bytes
 
 st.set_page_config(page_title="PDF CV Scrubber", layout="wide")
+
+# --- Replace Streamlit's auto-generated uploader label ("PDF, DOCX, DOC") ---
+st.markdown("""
+<style>
+[data-testid="stFileUploaderDropzoneInstructions"] small {
+    display: none;
+}
+[data-testid="stFileUploaderDropzoneInstructions"]::after {
+    content: "PDF files only • 10MB per file";
+    font-size: 0.85rem;
+    opacity: 0.7;
+}
+</style>
+""", unsafe_allow_html=True)
+
 st.title("Interactive PDF CV Contact Scrubber")
 st.write("Upload your resume and use manual sliders to position masks perfectly.")
 
@@ -30,14 +45,14 @@ if layout_style != st.session_state.active_layout:
 st.info(
     "💡 **Quick Start Guide**\n\n"
     "Please follow these simple steps:\n\n"
-    "1. 📄 **Convert First:** Ensure your resume is saved as a **PDF file** before uploading.\n"
+    "1. 📄 **Use a PDF:** This tool only supports **PDF resumes**. Word CVs can be edited directly in Word.\n"
     "2. 🔄 **Choose Layout:** Select *Standard* if contact text sits on the right, or *Two-Column* for left sidebars.\n"
     "3. 🎛️ **Adjust Sliders:** Move the controls to align the redaction box over your data while keeping your name safe.\n"
     "4. ⬛ **Change Style:** Check the aesthetics box to switch between *White-out blocks* and *Solid Black Bars*.\n"
     "5. 📥 **Save:** Click *Download Updated PDF* to save your finalized copy!"
 )
 
-st.markdown("**Upload the PDF Resume (Max 200MB)**")
+st.markdown("**Upload the PDF Resume (Max 10MB)**")
 
 with st.popover("📤 Click Here to Upload File", use_container_width=True):
     uploaded_file = st.file_uploader(
@@ -62,8 +77,13 @@ file_bytes = None
 if uploaded_file is not None:
     filename_lower = uploaded_file.name.lower()
     if filename_lower.endswith((".docx", ".doc")):
-        st.error("⚠️ Invalid File Type Detected!")
-        st.markdown("Our CV Scrubber can only process **PDF files**.\n\n**How to convert your Word document:**\n1. Open file in Word.\n2. Click **File** -> **Save As**.\n3. Select **PDF (*.pdf)** from format list.\n4. Upload new PDF here.")
+        st.error("⚠️ Word file detected. This tool only works with PDF files.")
+        st.markdown(
+            "Word CVs don't need this tool, as you can delete or edit the contact details "
+            "directly in Word.\n\n"
+            "If you still want to use the scrubber, save the file as a PDF first: "
+            "**File** -> **Save As** -> **PDF (*.pdf)**, then upload it here."
+        )
         is_valid_file = False
     elif filename_lower.endswith(".pdf"):
         file_bytes = uploaded_file.read()
