@@ -1,3 +1,4 @@
 streamlit
 pymupdf
-pdf2image
+numpy
+pillow
